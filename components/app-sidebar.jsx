@@ -40,7 +40,11 @@ const data = {
         },
         {
           title: "Assign Trucks",
-          url: "#",
+          url: "/assign_trucks",
+        },
+        {
+          title: "Refuel Trucks",
+          url: "/refuel",
         },
       ],
     },
@@ -48,10 +52,11 @@ const data = {
       title: "Drivers",
       url: "#",
       icon: Bot,
+      isActive: true,
       items: [
         {
           title: "View Drivers",
-          url: "#",
+          url: "/drivers",
         },
         {
           title: "Route Drivers",
@@ -63,13 +68,14 @@ const data = {
       title: "Maintenance",
       url: "#",
       icon: BookOpen,
+      isActive: true,
       items: [
         {
-          title: "Manage Request",
-          url: "#",
+          title: "Manage Maintenance",
+          url: "/maintenance",
         },
         {
-          title: "Manage Maintenance",
+          title: "Maintenance Request",
           url: "#",
         },
         {
@@ -82,6 +88,7 @@ const data = {
       title: "Analytics",
       url: "#",
       icon: BookOpen,
+      isActive: true,
       items: [
         {
           title: "Fuel Data",

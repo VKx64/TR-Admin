@@ -1,0 +1,89 @@
+import pb from "./pocketbase";
+
+export async function getDriverById(driverId) {
+  try {
+    // Fetch user with expanded driver_details_id relation to get driver information
+    const driver = await pb.collection("users").getOne(driverId, {
+      expand: "driver_details_id",
+    });
+    return driver;
+  } catch (error) {
+    console.error("Error fetching driver:", error);
+    throw error;
+  }
+}
+
+export async function updateDriver(driverId, userData, driverDetailsData = {}, licenseImage = null) {
+  try {
+    // Update the user information first
+    const userFormData = new FormData();
+
+    // Add relevant user fields
+    if (userData.username) userFormData.append('username', userData.username);
+    if (userData.email) userFormData.append('email', userData.email);
+    if (userData.role) userFormData.append('role', userData.role);
+
+    // Update the user record
+    await pb.collection("users").update(driverId, userFormData);
+
+    // Get the current user to check if they have driver details
+    const currentDriver = await pb.collection("users").getOne(driverId);
+    let driverDetailsId = currentDriver.driver_details_id;
+
+    // Create driver details form data
+    const detailsFormData = new FormData();
+
+    // Add driver details fields
+    Object.keys(driverDetailsData).forEach(key => {
+      if (driverDetailsData[key] !== null && driverDetailsData[key] !== undefined) {
+        detailsFormData.append(key, driverDetailsData[key]);
+      }
+    });
+
+    // Handle the license image if provided
+    if (licenseImage && licenseImage instanceof File) {
+      detailsFormData.append('driver_license_picture', licenseImage);
+    } else if (licenseImage === null) {
+      // If explicitly set to null, clear the image
+      detailsFormData.append('driver_license_picture-', ''); // PocketBase's way to clear a file field
+    }
+
+    // If driver details exist, update them; otherwise create new driver details
+    if (driverDetailsId) {
+      // Update existing driver details
+      await pb.collection("driver_details").update(driverDetailsId, detailsFormData);
+    } else {
+      // Create new driver details and link to user
+      const newDriverDetails = await pb.collection("driver_details").create(detailsFormData);
+
+      // Update user with new driver_details_id
+      await pb.collection("users").update(driverId, {
+        driver_details_id: newDriverDetails.id
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error updating driver:", error);
+    throw error;
+  }
+}
+
+export async function deleteDriver(driverId) {
+  try {
+    // Get the driver to find related driver_details
+    const driver = await pb.collection("users").getOne(driverId);
+
+    // If there are driver details, delete them first
+    if (driver.driver_details_id) {
+      await pb.collection("driver_details").delete(driver.driver_details_id);
+    }
+
+    // Delete the user record
+    await pb.collection("users").delete(driverId);
+    return true;
+  } catch (error) {
+    console.error("Error deleting driver:", error);
+    return false;
+  }
+}
