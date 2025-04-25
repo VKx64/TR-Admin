@@ -4,7 +4,7 @@ const nextConfig = {
     remotePatterns: [
       {
         protocol: 'https',
-        hostname: 'dbfleet.07130116.xyz',
+        hostname: 'zxky:8228',
         port: '',
         pathname: '/api/files/**',
       },

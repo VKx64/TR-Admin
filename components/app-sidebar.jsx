@@ -76,11 +76,11 @@ const data = {
         },
         {
           title: "Maintenance Request",
-          url: "#",
+          url: "/maintenance_request",
         },
         {
           title: "Maintenance Logs",
-          url: "#",
+          url: "/maintenance_history",
         },
       ],
     },
