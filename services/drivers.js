@@ -13,7 +13,7 @@ export async function getDriverById(driverId) {
   }
 }
 
-export async function updateDriver(driverId, userData, driverDetailsData = {}, licenseImage = null) {
+export async function updateDriver(driverId, userData, driverDetailsData = {}, licenseImage = null, avatarImage = null) {
   try {
     // Update the user information first
     const userFormData = new FormData();
@@ -22,6 +22,14 @@ export async function updateDriver(driverId, userData, driverDetailsData = {}, l
     if (userData.username) userFormData.append('username', userData.username);
     if (userData.email) userFormData.append('email', userData.email);
     if (userData.role) userFormData.append('role', userData.role);
+
+    // Handle avatar image if provided
+    if (avatarImage && avatarImage instanceof File) {
+      userFormData.append('avatar', avatarImage);
+    } else if (avatarImage === null) {
+      // If explicitly set to null, clear the image
+      userFormData.append('avatar-', ''); // PocketBase's way to clear a file field
+    }
 
     // Update the user record
     await pb.collection("users").update(driverId, userFormData);

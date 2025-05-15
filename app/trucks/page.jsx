@@ -12,6 +12,7 @@ async function fetchTrucksData() {
     const records = await pb.collection('trucks').getFullList({
       expand: 'users_id',
       sort: '-created',
+      requestKey: null // Add requestKey to avoid auto-cancellation
     });
     console.log("Fetched Trucks:", records);
     return records;

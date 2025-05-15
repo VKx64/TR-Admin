@@ -69,6 +69,32 @@ const ReadDriver = ({ isOpen, onClose, driverId }) => {
           </div>
         ) : driver ? (
           <div className="mt-2">
+            {/* Large Avatar Display at the top */}
+            <div className="mb-6 flex flex-col items-center justify-center">
+              <div className="relative w-36 h-36 bg-muted rounded-full overflow-hidden border-4 border-primary/10 shadow-md">
+                {driver.avatar ? (
+                  <img
+                    src={`${process.env.NEXT_PUBLIC_POCKETBASE_URL}/api/files/users/${driver.id}/${driver.avatar}`}
+                    alt={`${driver.username}'s avatar`}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = "/Images/avatar_placeholder.jpg";
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center bg-muted">
+                    <Icon icon="mdi:account" className="w-24 h-24 text-muted-foreground/50" />
+                  </div>
+                )}
+              </div>
+              <h2 className="mt-3 text-xl font-semibold">{driver.username}</h2>
+              <p className="text-muted-foreground">{driver.email || "No email"}</p>
+              <div className="mt-1 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
+                {driver.role || "Driver"}
+              </div>
+            </div>
+
             <Tabs defaultValue="personal" value={activeTab} onValueChange={setActiveTab}>
               <TabsList className="grid grid-cols-3 mb-6">
                 <TabsTrigger value="personal">Personal Info</TabsTrigger>
@@ -84,20 +110,6 @@ const ReadDriver = ({ isOpen, onClose, driverId }) => {
                     <CardDescription>Driver's personal details</CardDescription>
                   </CardHeader>
                   <CardContent className="grid grid-cols-2 gap-4">
-                    <div className="col-span-2 flex justify-center mb-4">
-                      {driver.avatar ? (
-                        <img
-                          src={`${process.env.NEXT_PUBLIC_POCKETBASE_URL}/api/files/users/${driver.id}/${driver.avatar}`}
-                          alt={`${driver.username}'s avatar`}
-                          className="w-32 h-32 rounded-full object-cover border-2 border-primary/20"
-                        />
-                      ) : (
-                        <div className="w-32 h-32 rounded-full bg-muted flex items-center justify-center">
-                          <Icon icon="mdi:account" className="w-16 h-16 text-muted-foreground/50" />
-                        </div>
-                      )}
-                    </div>
-
                     <InfoItem label="First Name" value={extractNames(driver.username).firstName} />
                     <InfoItem label="Last Name" value={extractNames(driver.username).lastName} />
                     {extractNames(driver.username).middleName && (
@@ -162,6 +174,10 @@ const ReadDriver = ({ isOpen, onClose, driverId }) => {
                         label="License Code"
                         value={driver.expand?.driver_details_id?.driver_license_code || "N/A"}
                       />
+                      <InfoItem
+                        label="License Expiration Date"
+                        value={driver.expand?.driver_details_id?.license_expiration_date ? new Date(driver.expand.driver_details_id.license_expiration_date).toLocaleDateString('en-CA') : "N/A"}
+                      />
                     </div>
 
                     <div className="mt-4">
@@ -171,6 +187,10 @@ const ReadDriver = ({ isOpen, onClose, driverId }) => {
                           src={`${process.env.NEXT_PUBLIC_POCKETBASE_URL}/api/files/driver_details/${driver.expand.driver_details_id.id}/${driver.expand.driver_details_id.driver_license_picture}`}
                           alt="Driver License"
                           className="max-h-[300px] w-auto rounded-md object-contain border border-border"
+                          onError={(e) => {
+                            e.target.onerror = null;
+                            e.target.src = "/Images/avatar_placeholder.jpg";
+                          }}
                         />
                       ) : (
                         <div className="flex flex-col items-center justify-center h-48 bg-muted rounded-md p-4">

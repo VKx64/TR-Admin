@@ -72,8 +72,8 @@ const ReadTruck = ({ isOpen, onClose, truckId }) => {
                     <InfoItem label="Color" value={truck.truck_color} />
                     <InfoItem label="Manufacturer" value={truck.truck_manufacturer} />
                     <InfoItem
-                      label="Manufacturing Date"
-                      value={truck.truck_date ? new Date(truck.truck_date).toLocaleDateString() : "N/A"}
+                      label="Production Year"
+                      value={truck.truck_date ? new Date(truck.truck_date).getFullYear() : "N/A"}
                     />
                     <InfoItem
                       label="Added to Fleet"

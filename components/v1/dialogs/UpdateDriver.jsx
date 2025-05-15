@@ -52,16 +52,21 @@ const driverFormSchema = z.object({
   driver_license_number: z.string().optional(),
   driver_license_code: z.string().optional(),
   driver_license_picture: z.any().optional(),
+  avatar: z.any().optional(), // Add avatar field to schema
+  license_expiration_date: z.string().regex(/^\d{4}\/(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/, "Invalid date format. Use YYYY/MM/DD").optional().or(z.literal('')), // Added license expiration date
 });
 
 const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
   // State
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [imageFile, setImageFile] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [licenseImageFile, setLicenseImageFile] = useState(null);
+  const [licenseImagePreview, setLicenseImagePreview] = useState(null);
+  const [avatarFile, setAvatarFile] = useState(null); // New state for avatar file
+  const [avatarPreview, setAvatarPreview] = useState(null); // New state for avatar preview
   const [activeTab, setActiveTab] = useState("basic");
-  const fileInputRef = useRef(null);
+  const licenseFileInputRef = useRef(null);
+  const avatarFileInputRef = useRef(null); // New ref for avatar file input
 
   // Form initialization
   const form = useForm({
@@ -74,6 +79,8 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
       phone: "",
       driver_license_number: "",
       driver_license_code: "",
+      avatar: null, // Add avatar default value
+      license_expiration_date: "", // Added license expiration date
     },
   });
 
@@ -100,11 +107,17 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
         phone: driverDetails.phone || "",
         driver_license_number: driverDetails.driver_license_number || "",
         driver_license_code: driverDetails.driver_license_code || "",
+        license_expiration_date: driverDetails.license_expiration_date ? new Date(driverDetails.license_expiration_date).toLocaleDateString('sv-SE').replace(/-/g, '/') : "", // Format to YYYY/MM/DD for input
       });
 
       // Set license image preview if available
       if (driverDetails.driver_license_picture) {
-        setImagePreview(`${process.env.NEXT_PUBLIC_POCKETBASE_URL}/api/files/${driverDetails.collectionId}/${driverDetails.id}/${driverDetails.driver_license_picture}`);
+        setLicenseImagePreview(`${process.env.NEXT_PUBLIC_POCKETBASE_URL}/api/files/${driverDetails.collectionId}/${driverDetails.id}/${driverDetails.driver_license_picture}`);
+      }
+
+      // Set avatar preview if available
+      if (driverData.avatar) {
+        setAvatarPreview(`${process.env.NEXT_PUBLIC_POCKETBASE_URL}/api/files/${driverData.collectionId}/${driverData.id}/${driverData.avatar}`);
       }
     } catch (error) {
       console.error("Error loading driver data:", error);
@@ -114,29 +127,54 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
     }
   };
 
-  // Handle image click to open file selector
-  const handleImageClick = () => {
-    fileInputRef.current?.click();
+  // Handle license image click to open file selector
+  const handleLicenseImageClick = () => {
+    licenseFileInputRef.current?.click();
   };
 
-  // Handle image change from file input
-  const handleImageChange = (e) => {
+  // Handle avatar click to open file selector
+  const handleAvatarClick = () => {
+    avatarFileInputRef.current?.click();
+  };
+
+  // Handle license image change from file input
+  const handleLicenseImageChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      setImageFile(file);
+      setLicenseImageFile(file);
       // Create preview URL
       const previewUrl = URL.createObjectURL(file);
-      setImagePreview(previewUrl);
+      setLicenseImagePreview(previewUrl);
     }
   };
 
-  // Clear the selected image
-  const clearImage = () => {
-    setImageFile(null);
-    setImagePreview(null);
-    fileInputRef.current.value = '';
+  // Handle avatar image change from file input
+  const handleAvatarChange = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAvatarFile(file);
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setAvatarPreview(previewUrl);
+    }
+  };
+
+  // Clear the selected license image
+  const clearLicenseImage = () => {
+    setLicenseImageFile(null);
+    setLicenseImagePreview(null);
+    licenseFileInputRef.current.value = '';
     // This will tell the backend to remove the existing image
     form.setValue("driver_license_picture", null);
+  };
+
+  // Clear the selected avatar
+  const clearAvatar = () => {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    avatarFileInputRef.current.value = '';
+    // This will tell the backend to remove the existing avatar
+    form.setValue("avatar", null);
   };
 
   const onSubmit = async (data) => {
@@ -154,10 +192,11 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
         phone: data.phone,
         driver_license_number: data.driver_license_number,
         driver_license_code: data.driver_license_code,
+        license_expiration_date: data.license_expiration_date ? data.license_expiration_date.replace(/\//g, '-') : null, // Convert YYYY/MM/DD to YYYY-MM-DD for PocketBase
       };
 
-      // Update the driver with form data and image file
-      await updateDriver(driverId, userData, driverDetailsData, imageFile);
+      // Update the driver with form data and image files
+      await updateDriver(driverId, userData, driverDetailsData, licenseImageFile, avatarFile);
 
       toast.success("Driver updated successfully");
       if (onSuccess) onSuccess();
@@ -192,10 +231,11 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
               <Tabs defaultValue={activeTab} value={activeTab} onValueChange={setActiveTab} className="w-full">
-                <TabsList className="grid grid-cols-3 mb-6">
+                <TabsList className="grid grid-cols-4 mb-6">
                   <TabsTrigger value="basic">Basic Info</TabsTrigger>
                   <TabsTrigger value="license">License Details</TabsTrigger>
-                  <TabsTrigger value="image">License Image</TabsTrigger>
+                  <TabsTrigger value="license-image">License Image</TabsTrigger>
+                  <TabsTrigger value="avatar">Profile Picture</TabsTrigger>
                 </TabsList>
 
                 {/* Basic Info Tab */}
@@ -309,11 +349,27 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={form.control}
+                      name="license_expiration_date"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>License Expiration Date</FormLabel>
+                          <FormControl>
+                            <Input placeholder="YYYY/MM/DD" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                          <FormDescription>
+                            Enter the license expiration date in YYYY/MM/DD format.
+                          </FormDescription>
+                        </FormItem>
+                      )}
+                    />
                   </div>
                 </TabsContent>
 
                 {/* License Image Tab */}
-                <TabsContent value="image" className="space-y-6">
+                <TabsContent value="license-image" className="space-y-6">
                   <Card className="border rounded-md">
                     <CardHeader>
                       <CardTitle>License Image</CardTitle>
@@ -322,9 +378,9 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
                     <CardContent className="flex flex-col items-center space-y-4">
                       {/* Image Preview */}
                       <div className="relative w-full max-w-md aspect-video bg-muted rounded-md flex items-center justify-center overflow-hidden">
-                        {imagePreview ? (
+                        {licenseImagePreview ? (
                           <img
-                            src={imagePreview}
+                            src={licenseImagePreview}
                             alt="License preview"
                             className="w-full h-full object-contain"
                           />
@@ -341,18 +397,18 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
                         <Button
                           type="button"
                           variant="outline"
-                          onClick={handleImageClick}
+                          onClick={handleLicenseImageClick}
                           className="flex-1"
                         >
                           <Icon icon="mdi:upload" className="mr-2 h-4 w-4" />
-                          {imagePreview ? "Change Image" : "Upload Image"}
+                          {licenseImagePreview ? "Change Image" : "Upload Image"}
                         </Button>
 
-                        {imagePreview && (
+                        {licenseImagePreview && (
                           <Button
                             type="button"
                             variant="destructive"
-                            onClick={clearImage}
+                            onClick={clearLicenseImage}
                             className="flex-1"
                           >
                             <Icon icon="mdi:delete" className="mr-2 h-4 w-4" />
@@ -361,15 +417,77 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
                         )}
 
                         <input
-                          ref={fileInputRef}
+                          ref={licenseFileInputRef}
                           type="file"
                           accept="image/*"
-                          onChange={handleImageChange}
+                          onChange={handleLicenseImageChange}
                           className="hidden"
                           aria-hidden="true"
                         />
                       </div>
                       <FormMessage>{form.formState.errors.driver_license_picture?.message}</FormMessage>
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                {/* Avatar Tab */}
+                <TabsContent value="avatar" className="space-y-6">
+                  <Card className="border rounded-md">
+                    <CardHeader>
+                      <CardTitle>Profile Picture</CardTitle>
+                      <CardDescription>Upload or update the driver's profile picture</CardDescription>
+                    </CardHeader>
+                    <CardContent className="flex flex-col items-center space-y-4">
+                      {/* Avatar Preview */}
+                      <div className="relative w-32 h-32 bg-muted rounded-full flex items-center justify-center overflow-hidden">
+                        {avatarPreview ? (
+                          <img
+                            src={avatarPreview}
+                            alt="Profile preview"
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="flex flex-col items-center text-center p-2">
+                            <Icon icon="mdi:account" className="h-16 w-16 text-muted-foreground/50" />
+                            <span className="text-muted-foreground">No image</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Avatar Controls */}
+                      <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={handleAvatarClick}
+                          className="flex-1"
+                        >
+                          <Icon icon="mdi:upload" className="mr-2 h-4 w-4" />
+                          {avatarPreview ? "Change Picture" : "Upload Picture"}
+                        </Button>
+
+                        {avatarPreview && (
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            onClick={clearAvatar}
+                            className="flex-1"
+                          >
+                            <Icon icon="mdi:delete" className="mr-2 h-4 w-4" />
+                            Remove Picture
+                          </Button>
+                        )}
+
+                        <input
+                          ref={avatarFileInputRef}
+                          type="file"
+                          accept="image/*"
+                          onChange={handleAvatarChange}
+                          className="hidden"
+                          aria-hidden="true"
+                        />
+                      </div>
+                      <FormMessage>{form.formState.errors.avatar?.message}</FormMessage>
                     </CardContent>
                   </Card>
                 </TabsContent>

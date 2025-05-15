@@ -46,6 +46,10 @@ const data = {
           title: "Refuel Trucks",
           url: "/refuel",
         },
+        {
+          title: "Truck Tracking",
+          url: "/gps",
+        },
       ],
     },
     {
@@ -110,12 +114,12 @@ const data = {
   projects: [
     {
       name: "Truck Management",
-      url: "#",
+      url: "/trucks",
       icon: Frame,
     },
     {
       name: "Driver Management",
-      url: "#",
+      url: "/drivers",
       icon: PieChart,
     },
     {
@@ -125,7 +129,7 @@ const data = {
     },
     {
       name: "Maintenance Request",
-      url: "#",
+      url: "/maintenance_request",
       icon: Map,
     },
   ],

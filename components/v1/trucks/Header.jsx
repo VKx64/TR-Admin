@@ -1,6 +1,5 @@
 import React from "react";
 import { Icon } from "@iconify/react";
-import { Card } from "../../ui/card";
 import { Input } from "../../ui/input";
 import {
   DropdownMenu,
@@ -28,7 +27,7 @@ const Header = ({ onRefresh }) => {
     <div className="w-full p-0 bg-white shadow-none border-none rounded-none">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Icon icon='mingcute:bus-line' className="text-3xl"/>
+          <Icon icon='mingcute:bus-line' className="text-3xl text-primary"/>
           <h1 className="text-2xl font-semibold">Truck Management</h1>
         </div>
 

@@ -38,7 +38,6 @@ import {
 } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card'
 import {
   Select,
   SelectContent,
@@ -71,6 +70,7 @@ const driverFormSchema = z.object({
   driver_license_number: z.string().min(1, "License number is required"),
   driver_license_code: z.string().optional(),
   driver_license_picture: z.any().optional(),
+  license_expiration_date: z.string().regex(/^\d{4}\/(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/, "Invalid date format. Use YYYY/MM/DD").optional(),
   user_id: z.string().optional(),
 })
 
@@ -94,6 +94,7 @@ const defaultFormValues = {
   driver_license_number: "",
   driver_license_code: "",
   driver_license_picture: null,
+  license_expiration_date: "",
   user_id: "",
 }
 
@@ -132,7 +133,9 @@ const CreateDriver = () => {
     const fetchRegions = async () => {
       setLoadingRegions(true)
       try {
-        const response = await fetch('https://psgc.cloud/api/regions')
+        const response = await fetch('https://psgc.cloud/api/regions', {
+          requestKey: null // Add requestKey to avoid auto-cancellation
+        })
         const data = await response.json()
         setRegions(data)
       } catch (error) {
@@ -159,7 +162,9 @@ const CreateDriver = () => {
     const fetchProvinces = async () => {
       setLoadingProvinces(true)
       try {
-        const response = await fetch(`https://psgc.cloud/api/regions/${regionCode}/provinces`)
+        const response = await fetch(`https://psgc.cloud/api/regions/${regionCode}/provinces`, {
+          requestKey: null // Add requestKey to avoid auto-cancellation
+        })
         const data = await response.json()
         setProvinces(data)
         form.setValue('province', '')
@@ -188,7 +193,9 @@ const CreateDriver = () => {
     const fetchCities = async () => {
       setLoadingCities(true)
       try {
-        const response = await fetch(`https://psgc.cloud/api/provinces/${provinceCode}/cities-municipalities`)
+        const response = await fetch(`https://psgc.cloud/api/provinces/${provinceCode}/cities-municipalities`, {
+          requestKey: null // Add requestKey to avoid auto-cancellation
+        })
         const data = await response.json()
         setCities(data)
         form.setValue('city', '')
@@ -215,7 +222,9 @@ const CreateDriver = () => {
     const fetchBarangays = async () => {
       setLoadingBarangays(true)
       try {
-        const response = await fetch(`https://psgc.cloud/api/cities-municipalities/${cityCode}/barangays`)
+        const response = await fetch(`https://psgc.cloud/api/cities-municipalities/${cityCode}/barangays`, {
+          requestKey: null // Add requestKey to avoid auto-cancellation
+        })
         const data = await response.json()
         setBarangays(data)
         form.setValue('barangay', '')
@@ -261,15 +270,16 @@ const CreateDriver = () => {
 
   // Resets the form fields, image previews, and active tab
   const resetForm = () => {
-    form.reset(defaultFormValues) // Reset react-hook-form state
+    form.reset(defaultFormValues)
     setAvatarPreview(null)
     setLicensePreview(null)
+    form.setValue("license_expiration_date", "")
     setActiveTab('account')
     if (avatarFileInputRef.current) {
-      avatarFileInputRef.current.value = '' // Clear the avatar file input
+      avatarFileInputRef.current.value = ''
     }
     if (licenseFileInputRef.current) {
-      licenseFileInputRef.current.value = '' // Clear the license file input
+      licenseFileInputRef.current.value = ''
     }
   }
 
@@ -279,17 +289,10 @@ const CreateDriver = () => {
     resetForm()
   }
 
-  // Opens the hidden avatar file input dialog
-  const handleAvatarClick = () => {
-    avatarFileInputRef.current?.click()
-  }
+  // Image handling functions
+  const handleAvatarClick = () => avatarFileInputRef.current?.click()
+  const handleLicenseClick = () => licenseFileInputRef.current?.click()
 
-  // Opens the hidden license file input dialog
-  const handleLicenseClick = () => {
-    licenseFileInputRef.current?.click()
-  }
-
-  // Handles the selection of an avatar image file
   const handleAvatarChange = (event) => {
     const file = event.target.files?.[0]
     if (file) {
@@ -298,7 +301,6 @@ const CreateDriver = () => {
     }
   }
 
-  // Handles the selection of a license image file
   const handleLicenseChange = (event) => {
     const file = event.target.files?.[0]
     if (file) {
@@ -329,6 +331,10 @@ const CreateDriver = () => {
       driverDetailsData.append("phone", data.phone || "")
       driverDetailsData.append("driver_license_number", data.driver_license_number)
       driverDetailsData.append("driver_license_code", data.driver_license_code || "")
+      if (data.license_expiration_date) {
+        const formattedDate = data.license_expiration_date.replace(/\//g, '-');
+        driverDetailsData.append("license_expiration_date", formattedDate)
+      }
 
       // Add the current authenticated user's ID
       if (pb.authStore.record) {
@@ -339,22 +345,23 @@ const CreateDriver = () => {
         driverDetailsData.append("driver_license_picture", data.driver_license_picture)
       }
 
-      const driverDetails = await pb.collection('driver_details').create(driverDetailsData)
+      const driverDetails = await pb.collection('driver_details').create(driverDetailsData, {
+        requestKey: null // Add requestKey to avoid auto-cancellation
+      })
 
       // Generate the full name for the username field
       const fullName = generateFullName(data.firstName, data.middleName, data.lastName);
 
       // Now create the user record with reference to driver details
       const userData = new FormData()
-      userData.append("username", fullName) // Store the full name in the username field
+      userData.append("username", fullName)
       userData.append("email", data.email)
       userData.append("password", data.password)
       userData.append("passwordConfirm", data.password)
       userData.append("role", "driver")
       userData.append("driver_details_id", driverDetails.id)
-      userData.append("emailVisibility", true) // Ensure email visibility is set to true
+      userData.append("emailVisibility", true)
 
-      // Also add the current authenticated user's ID to the user record
       if (pb.authStore.record) {
         userData.append("user_id", pb.authStore.record.id)
       }
@@ -364,7 +371,9 @@ const CreateDriver = () => {
       }
 
       // Create user with driver role
-      await pb.collection('users').create(userData)
+      await pb.collection('users').create(userData, {
+        requestKey: null // Add requestKey to avoid auto-cancellation
+      })
 
       toast.success("Driver registered successfully!")
       closeDialog()
@@ -372,9 +381,6 @@ const CreateDriver = () => {
       console.error('Error creating driver:', error)
       const errorMessage = error?.response?.message || 'Failed to register driver. Please try again.'
       toast.error(errorMessage)
-
-      // If there was an error, try to clean up the driver_details record if it was created
-      // This could be expanded with more robust error handling
     } finally {
       setIsLoading(false)
     }
@@ -390,7 +396,7 @@ const CreateDriver = () => {
         </Button>
       </DialogTrigger>
 
-      <DialogContent className="max-w-[600px] max-h-[90vh] overflow-y-auto scrollbar-hide">
+      <DialogContent className="max-w-[600px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Register New Driver</DialogTitle>
           <DialogDescription>
@@ -408,44 +414,309 @@ const CreateDriver = () => {
               </TabsList>
 
               {/* Account Tab */}
-              <TabsContent value="account" className="space-y-6">
+              <TabsContent value="account" className="space-y-4">
                 {/* User Account Fields */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="firstName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>First Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="John" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="middleName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Middle Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="M." {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="lastName"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Last Name</FormLabel>
+                        <FormControl>
+                          <Input placeholder="Doe" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                <FormField
+                  control={form.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
+                        <Input placeholder="john.doe@example.com" type="email" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <Input placeholder="••••••••" type="password" {...field} />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                {/* Avatar Upload */}
                 <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormLabel>Profile Picture</FormLabel>
+                  <div className="flex items-center gap-4">
+                    <div className="relative w-24 h-24 bg-muted rounded-full flex items-center justify-center overflow-hidden">
+                      {avatarPreview ? (
+                        <img
+                          src={avatarPreview}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <Icon icon="mdi:account" className="h-12 w-12 text-muted-foreground/50" />
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleAvatarClick}
+                      >
+                        {avatarPreview ? "Change Picture" : "Upload Picture"}
+                      </Button>
+                      {avatarPreview && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setAvatarPreview(null);
+                            form.setValue("avatar", null);
+                            if (avatarFileInputRef.current) {
+                              avatarFileInputRef.current.value = '';
+                            }
+                          }}
+                        >
+                          Remove Picture
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    ref={avatarFileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleAvatarChange}
+                    className="hidden"
+                    aria-hidden="true"
+                  />
+                </div>
+              </TabsContent>
+
+              {/* Driver Details Tab */}
+              <TabsContent value="details" className="space-y-4">
+                <div className="space-y-4">
+                  <h3 className="text-lg font-medium">Address Information</h3>
+
+                  {/* Region */}
+                  <FormField
+                    control={form.control}
+                    name="region"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Region</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={loadingRegions}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a region" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {loadingRegions ? (
+                              <SelectItem value="loading" disabled>Loading regions...</SelectItem>
+                            ) : regions.map(region => (
+                              <SelectItem key={region.code} value={region.code}>
+                                {region.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Province */}
+                  <FormField
+                    control={form.control}
+                    name="province"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Province</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={loadingProvinces || !form.watch('region')}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a province" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {loadingProvinces ? (
+                              <SelectItem value="loading" disabled>Loading provinces...</SelectItem>
+                            ) : !form.watch('region') ? (
+                              <SelectItem value="select-region" disabled>Select a region first</SelectItem>
+                            ) : provinces.length === 0 ? (
+                              <SelectItem value="no-provinces" disabled>No provinces available</SelectItem>
+                            ) : provinces.map(province => (
+                              <SelectItem key={province.code} value={province.code}>
+                                {province.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* City/Municipality */}
+                  <FormField
+                    control={form.control}
+                    name="city"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>City/Municipality</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={loadingCities || !form.watch('province')}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a city/municipality" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {loadingCities ? (
+                              <SelectItem value="loading" disabled>Loading cities...</SelectItem>
+                            ) : !form.watch('province') ? (
+                              <SelectItem value="select-province" disabled>Select a province first</SelectItem>
+                            ) : cities.length === 0 ? (
+                              <SelectItem value="no-cities" disabled>No cities available</SelectItem>
+                            ) : cities.map(city => (
+                              <SelectItem key={city.code} value={city.code}>
+                                {city.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  {/* Barangay */}
+                  <FormField
+                    control={form.control}
+                    name="barangay"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Barangay</FormLabel>
+                        <Select
+                          onValueChange={field.onChange}
+                          defaultValue={field.value}
+                          disabled={loadingBarangays || !form.watch('city')}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select a barangay" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            {loadingBarangays ? (
+                              <SelectItem value="loading" disabled>Loading barangays...</SelectItem>
+                            ) : !form.watch('city') ? (
+                              <SelectItem value="select-city" disabled>Select a city first</SelectItem>
+                            ) : barangays.length === 0 ? (
+                              <SelectItem value="no-barangays" disabled>No barangays available</SelectItem>
+                            ) : barangays.map(barangay => (
+                              <SelectItem key={barangay.code} value={barangay.code}>
+                                {barangay.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Street Address */}
                     <FormField
                       control={form.control}
-                      name="firstName"
+                      name="streetAddress"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>First Name *</FormLabel>
+                          <FormLabel>Street Address</FormLabel>
                           <FormControl>
-                            <Input placeholder="John" {...field} />
+                            <Input
+                              placeholder="123 Main Street"
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+
+                    {/* Postal Code */}
                     <FormField
                       control={form.control}
-                      name="middleName"
+                      name="postalCode"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Middle Name</FormLabel>
+                          <FormLabel>Postal Code</FormLabel>
                           <FormControl>
-                            <Input placeholder="M." {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={form.control}
-                      name="lastName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Last Name *</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Doe" {...field} />
+                            <Input
+                              placeholder="1200"
+                              value={field.value || ''}
+                              onChange={field.onChange}
+                            />
                           </FormControl>
                           <FormMessage />
                         </FormItem>
@@ -453,414 +724,142 @@ const CreateDriver = () => {
                     />
                   </div>
 
+                  {/* Phone Number */}
                   <FormField
                     control={form.control}
-                    name="email"
+                    name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Email *</FormLabel>
+                        <FormLabel>Phone Number</FormLabel>
                         <FormControl>
-                          <Input placeholder="john.doe@example.com" type="email" {...field} />
+                          <Input placeholder="(123) 456-7890" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
-                  <FormField
-                    control={form.control}
-                    name="password"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Password *</FormLabel>
-                        <FormControl>
-                          <Input placeholder="••••••••" type="password" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <Card className="border rounded-md">
-                    <CardHeader>
-                      <CardTitle>Profile Picture</CardTitle>
-                      <CardDescription>Upload a profile picture for the driver</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col items-center space-y-4">
-                      {/* Avatar Preview */}
-                      <div className="relative w-32 h-32 bg-muted rounded-full flex items-center justify-center overflow-hidden">
-                        {avatarPreview ? (
-                          <img
-                            src={avatarPreview}
-                            alt="Profile preview"
-                            className="w-full h-full object-cover"
-                          />
-                        ) : (
-                          <div className="flex flex-col items-center text-center p-2">
-                            <Icon icon="mdi:account" className="h-16 w-16 text-muted-foreground/50" />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Avatar Controls */}
-                      <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleAvatarClick}
-                          className="flex-1"
-                        >
-                          <Icon icon="mdi:upload" className="mr-2 h-4 w-4" />
-                          {avatarPreview ? "Change Picture" : "Upload Picture"}
-                        </Button>
-
-                        {avatarPreview && (
-                          <Button
-                            type="button"
-                            variant="destructive"
-                            onClick={() => {
-                              setAvatarPreview(null);
-                              form.setValue("avatar", null);
-                              if (avatarFileInputRef.current) {
-                                avatarFileInputRef.current.value = '';
-                              }
-                            }}
-                            className="flex-1"
-                          >
-                            <Icon icon="mdi:delete" className="mr-2 h-4 w-4" />
-                            Remove Picture
-                          </Button>
-                        )}
-
-                        <input
-                          ref={avatarFileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleAvatarChange}
-                          className="hidden"
-                          aria-hidden="true"
-                        />
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              </TabsContent>
-
-              {/* Driver Details Tab */}
-              <TabsContent value="details" className="space-y-6">
-                <div className="space-y-4">
-                  <Card className="border rounded-md">
-                    <CardHeader>
-                      <CardTitle>Address Information</CardTitle>
-                      <CardDescription>Please provide the driver's complete address</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      {/* Region */}
-                      <FormField
-                        control={form.control}
-                        name="region"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Region *</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                              disabled={loadingRegions}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select a region" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {loadingRegions ? (
-                                  <SelectItem value="loading" disabled>Loading regions...</SelectItem>
-                                ) : regions.map(region => (
-                                  <SelectItem key={region.code} value={region.code}>
-                                    {region.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      {/* Province */}
-                      <FormField
-                        control={form.control}
-                        name="province"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Province *</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                              disabled={loadingProvinces || !form.watch('region')}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select a province" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {loadingProvinces ? (
-                                  <SelectItem value="loading" disabled>Loading provinces...</SelectItem>
-                                ) : !form.watch('region') ? (
-                                  <SelectItem value="select-region" disabled>Select a region first</SelectItem>
-                                ) : provinces.length === 0 ? (
-                                  <SelectItem value="no-provinces" disabled>No provinces available</SelectItem>
-                                ) : provinces.map(province => (
-                                  <SelectItem key={province.code} value={province.code}>
-                                    {province.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      {/* City/Municipality */}
-                      <FormField
-                        control={form.control}
-                        name="city"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>City/Municipality *</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                              disabled={loadingCities || !form.watch('province')}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select a city/municipality" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {loadingCities ? (
-                                  <SelectItem value="loading" disabled>Loading cities...</SelectItem>
-                                ) : !form.watch('province') ? (
-                                  <SelectItem value="select-province" disabled>Select a province first</SelectItem>
-                                ) : cities.length === 0 ? (
-                                  <SelectItem value="no-cities" disabled>No cities available</SelectItem>
-                                ) : cities.map(city => (
-                                  <SelectItem key={city.code} value={city.code}>
-                                    {city.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      {/* Barangay */}
-                      <FormField
-                        control={form.control}
-                        name="barangay"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Barangay *</FormLabel>
-                            <Select
-                              onValueChange={field.onChange}
-                              defaultValue={field.value}
-                              disabled={loadingBarangays || !form.watch('city')}
-                            >
-                              <FormControl>
-                                <SelectTrigger>
-                                  <SelectValue placeholder="Select a barangay" />
-                                </SelectTrigger>
-                              </FormControl>
-                              <SelectContent>
-                                {loadingBarangays ? (
-                                  <SelectItem value="loading" disabled>Loading barangays...</SelectItem>
-                                ) : !form.watch('city') ? (
-                                  <SelectItem value="select-city" disabled>Select a city first</SelectItem>
-                                ) : barangays.length === 0 ? (
-                                  <SelectItem value="no-barangays" disabled>No barangays available</SelectItem>
-                                ) : barangays.map(barangay => (
-                                  <SelectItem key={barangay.code} value={barangay.code}>
-                                    {barangay.name}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      {/* Street Address */}
-                      <FormField
-                        control={form.control}
-                        name="streetAddress"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Street Address</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g., 123 Main Street, Unit 456"
-                                value={field.value || ''}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      {/* Postal Code */}
-                      <FormField
-                        control={form.control}
-                        name="postalCode"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Postal Code</FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="e.g., 1200"
-                                value={field.value || ''}
-                                onChange={field.onChange}
-                                onBlur={field.onBlur}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-
-                      {/* Phone Number - Moved inside the Address Information card */}
-                      <FormField
-                        control={form.control}
-                        name="phone"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Phone Number</FormLabel>
-                            <FormControl>
-                              <Input placeholder="(123) 456-7890" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </CardContent>
-                  </Card>
                 </div>
               </TabsContent>
 
               {/* License Tab */}
-              <TabsContent value="license" className="space-y-6">
+              <TabsContent value="license" className="space-y-4">
                 <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="driver_license_number"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>License Number</FormLabel>
+                          <FormControl>
+                            <Input placeholder="DL12345678" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={form.control}
+                      name="driver_license_code"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>License Code</FormLabel>
+                          <FormControl>
+                            <Input placeholder="e.g., CDL-A" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {/* License Expiration Date */}
                   <FormField
                     control={form.control}
-                    name="driver_license_number"
+                    name="license_expiration_date"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>License Number *</FormLabel>
+                        <FormLabel>License Expiration Date</FormLabel>
                         <FormControl>
-                          <Input placeholder="DL12345678" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={form.control}
-                    name="driver_license_code"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>License Code</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., CDL-A" {...field} />
+                          <Input placeholder="YYYY/MM/DD" {...field} />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
 
-                  <Card className="border rounded-md">
-                    <CardHeader>
-                      <CardTitle>License Photo</CardTitle>
-                      <CardDescription>Upload a photo of the driver's license</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex flex-col items-center space-y-4">
-                      {/* License Preview */}
-                      <div className="relative w-full max-w-md aspect-video bg-muted rounded-md flex items-center justify-center overflow-hidden">
+                  {/* License Photo */}
+                  <div className="space-y-4">
+                    <FormLabel>License Photo</FormLabel>
+                    <div className="bg-muted p-4 rounded-md">
+                      <div className="flex flex-col items-center gap-4">
                         {licensePreview ? (
-                          <img
-                            src={licensePreview}
-                            alt="License preview"
-                            className="w-full h-full object-contain"
-                          />
+                          <div className="relative w-full max-w-md rounded-md overflow-hidden">
+                            <img
+                              src={licensePreview}
+                              alt="License"
+                              className="w-full h-auto max-h-[200px] object-contain"
+                            />
+                          </div>
                         ) : (
-                          <div className="flex flex-col items-center text-center p-2">
-                            <Icon icon="mdi:card-account-details" className="h-16 w-16 text-muted-foreground/50 mb-2" />
-                            <span className="text-muted-foreground">No license photo selected</span>
+                          <div className="flex flex-col items-center text-center p-6 border-2 border-dashed border-muted-foreground/25 rounded-md w-full">
+                            <Icon icon="mdi:license" className="h-10 w-10 text-muted-foreground/50 mb-2" />
+                            <span className="text-sm text-muted-foreground">No license photo selected</span>
                           </div>
                         )}
-                      </div>
 
-                      {/* License Controls */}
-                      <div className="flex flex-col sm:flex-row gap-4 w-full max-w-md">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          onClick={handleLicenseClick}
-                          className="flex-1"
-                        >
-                          <Icon icon="mdi:upload" className="mr-2 h-4 w-4" />
-                          {licensePreview ? "Change Photo" : "Upload Photo"}
-                        </Button>
-
-                        {licensePreview && (
+                        <div className="flex gap-2">
                           <Button
                             type="button"
-                            variant="destructive"
-                            onClick={() => {
-                              setLicensePreview(null);
-                              form.setValue("driver_license_picture", null);
-                              if (licenseFileInputRef.current) {
-                                licenseFileInputRef.current.value = '';
-                              }
-                            }}
-                            className="flex-1"
+                            variant="outline"
+                            size="sm"
+                            onClick={handleLicenseClick}
                           >
-                            <Icon icon="mdi:delete" className="mr-2 h-4 w-4" />
-                            Remove Photo
+                            {licensePreview ? "Change Photo" : "Upload Photo"}
                           </Button>
-                        )}
-
-                        <input
-                          ref={licenseFileInputRef}
-                          type="file"
-                          accept="image/*"
-                          onChange={handleLicenseChange}
-                          className="hidden"
-                          aria-hidden="true"
-                        />
+                          {licensePreview && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                setLicensePreview(null);
+                                form.setValue("driver_license_picture", null);
+                                if (licenseFileInputRef.current) {
+                                  licenseFileInputRef.current.value = '';
+                                }
+                              }}
+                            >
+                              Remove Photo
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
+
+                    <input
+                      ref={licenseFileInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleLicenseChange}
+                      className="hidden"
+                      aria-hidden="true"
+                    />
+                  </div>
                 </div>
               </TabsContent>
             </Tabs>
 
-            <DialogFooter className="flex justify-end gap-4 pt-4 border-t">
+            <DialogFooter>
               <Button onClick={closeDialog} type="button" variant="outline">
                 Cancel
               </Button>
               <Button type="submit" disabled={isLoading}>
                 {isLoading ? (
-                  <div className="flex items-center">
+                  <>
                     <Icon icon="mdi:loading" className="mr-2 animate-spin" />
                     Registering...
-                  </div>
+                  </>
                 ) : (
                   'Register Driver'
                 )}

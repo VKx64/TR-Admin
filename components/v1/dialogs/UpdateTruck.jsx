@@ -44,25 +44,19 @@ const truckFormSchema = z.object({
   plate_number: z.string().min(1, "Plate number is required"),
   truck_model: z.string().min(1, "Truck model is required"),
   truck_color: z.string().optional(),
-  truck_date: z.string()
+  truck_year: z.string()
     .optional()
     .refine(
-      (val) => !val || /^\d{4}-\d{2}-\d{2}$/.test(val),
-      { message: "Date must be in YYYY-MM-DD format" }
+      (val) => !val || /^\d{4}$/.test(val),
+      { message: "Year must be in YYYY format" }
     )
     .refine(
       (val) => {
         if (!val) return true; // Allow empty value
-        const [year, month, day] = val.split('-').map(Number);
-        const date = new Date(year, month - 1, day);
-        return (
-          !isNaN(date.getTime()) &&
-          date.getFullYear() === year &&
-          date.getMonth() === month - 1 &&
-          date.getDate() === day
-        );
+        const year = parseInt(val, 10);
+        return !isNaN(year) && year >= 1900 && year <= new Date().getFullYear() + 1;
       },
-      { message: "Please enter a valid date" }
+      { message: "Please enter a valid year between 1900 and next year" }
     ),
   truck_manufacturer: z.string().optional(),
   truck_engine_power: z.string().optional(),
@@ -93,7 +87,7 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
       truck_model: "",
       truck_color: "",
       truck_type: "",
-      truck_date: "",
+      truck_year: "",
       truck_manufacturer: "",
       truck_engine_power: "",
       truck_engine_capacity: "",
@@ -129,7 +123,7 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
         truck_model: truckData.truck_model || "",
         truck_color: truckData.truck_color || "",
         truck_type: truckData.truck_type || "",
-        truck_date: formattedDate,
+        truck_year: formattedDate,
         truck_manufacturer: truckData.truck_manufacturer || "",
         truck_engine_power: truckData.truck_engine_power || "",
         truck_engine_capacity: truckData.truck_engine_capacity || "",
@@ -194,7 +188,7 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
       value = value.slice(0, 10);
     }
 
-    form.setValue('truck_date', value, { shouldValidate: true });
+    form.setValue('truck_year', value, { shouldValidate: true });
   };
 
   const onSubmit = async (data) => {
@@ -301,13 +295,13 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
                     />
                     <FormField
                       control={form.control}
-                      name="truck_date"
+                      name="truck_year"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Production Date</FormLabel>
+                          <FormLabel>Production Year</FormLabel>
                           <FormControl>
                             <Input
-                              placeholder="YYYY-MM-DD"
+                              placeholder="YYYY"
                               {...field}
                               onChange={handleDateInputChange}
                               value={field.value || ''}
@@ -315,7 +309,7 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
                           </FormControl>
                           <FormMessage />
                           <div className="text-xs text-muted-foreground">
-                            Enter date in YYYY-MM-DD format (e.g., 2025-04-20)
+                            Enter year in YYYY format (e.g., 2025)
                           </div>
                         </FormItem>
                       )}
