@@ -149,13 +149,13 @@ const CreateTruck = () => { // Remove onSuccess prop
   // Formats the date input to YYYY-MM-DD as the user types
   const handleDateInputChange = (e) => {
     let value = e.target.value;
-    value = value.replace(/[^\d-]/g, ''); // Remove non-digit/non-dash
+    value = value.replace(/[^\\d-]/g, ''); // Remove non-digit/non-dash
 
     // Auto-insert dashes
     if (value.length === 4 && !value.includes('-')) {
       value += '-';
     } else if (value.length === 7 && value.indexOf('-', 5) === -1) {
-      value += '-';
+      value += '-'; // Completed this line
     }
 
     // Limit length
@@ -295,8 +295,9 @@ const CreateTruck = () => { // Remove onSuccess prop
                           <Input
                             placeholder="YYYY"
                             {...field}
-                            onChange={handleDateInputChange} // Use custom handler
-                            value={field.value || ''} // Ensure controlled
+                            onChange={field.onChange}
+                            value={field.value || ''}
+                            maxLength={4} // Added maxLength attribute
                           />
                         </FormControl>
                         <FormMessage />
@@ -365,12 +366,9 @@ const CreateTruck = () => { // Remove onSuccess prop
                           </FormControl>
                           <SelectContent>
                             <SelectItem value="Diesel">Diesel</SelectItem>
-                            <SelectItem value="Gasoline">Gasoline</SelectItem>
-                            <SelectItem value="Electric">Electric</SelectItem>
-                            <SelectItem value="CNG">CNG</SelectItem>
-                            <SelectItem value="LPG">LPG</SelectItem>
-                            <SelectItem value="Hybrid">Hybrid</SelectItem>
-                            <SelectItem value="Other">Other</SelectItem>
+                            <SelectItem value="Regular">Regular</SelectItem>
+                            <SelectItem value="Special">Special</SelectItem>
+                            <SelectItem value="Premium">Premium</SelectItem>
                           </SelectContent>
                         </Select>
                         <FormMessage />

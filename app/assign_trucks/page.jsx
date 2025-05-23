@@ -46,9 +46,11 @@ const AssignTrucksPage = () => {
   const handleAssignDriver = async (truckId, driverId) => {
     try {
       // driverId will be null if "unassigned" is selected
-      await pb.collection('trucks').update(truckId, {
+      const dataToUpdate = {
         users_id: driverId || null,
-      });
+        assigned_date: driverId ? new Date().toISOString() : null,
+      };
+      await pb.collection('trucks').update(truckId, dataToUpdate);
 
       toast.success("Truck assignment updated successfully");
       fetchTrucks(); // Refresh truck data

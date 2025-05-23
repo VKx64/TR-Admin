@@ -373,12 +373,9 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
                             </FormControl>
                             <SelectContent>
                               <SelectItem value="Diesel">Diesel</SelectItem>
-                              <SelectItem value="Gasoline">Gasoline</SelectItem>
-                              <SelectItem value="Electric">Electric</SelectItem>
-                              <SelectItem value="CNG">CNG</SelectItem>
-                              <SelectItem value="LPG">LPG</SelectItem>
-                              <SelectItem value="Hybrid">Hybrid</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
+                              <SelectItem value="Regular">Regular</SelectItem>
+                              <SelectItem value="Special">Special</SelectItem>
+                              <SelectItem value="Premium">Premium</SelectItem>
                             </SelectContent>
                           </Select>
                           <FormMessage />

@@ -109,6 +109,9 @@ const CreateDriver = () => {
   const [licensePreview, setLicensePreview] = useState(null)
   const avatarFileInputRef = useRef(null)
   const licenseFileInputRef = useRef(null)
+  const [passwordSuffix, setPasswordSuffix] = useState('');
+  const [isPasswordManuallySet, setIsPasswordManuallySet] = useState(false);
+  const [showPassword, setShowPassword] = useState(true);
 
   // Address selection states
   const [regions, setRegions] = useState([])
@@ -125,6 +128,42 @@ const CreateDriver = () => {
     resolver: zodResolver(driverFormSchema),
     defaultValues: defaultFormValues,
   })
+
+  // --- Helper Functions --- //
+
+  const generateRandomDigits = (length) => {
+    let result = '';
+    const characters = '0123456789';
+    for (let i = 0; i < length; i++) {
+      result += characters.charAt(Math.floor(Math.random() * characters.length));
+    }
+    return result;
+  };
+
+  const initializeAndResetFormStates = () => {
+    const newSuffix = generateRandomDigits(8);
+    setPasswordSuffix(newSuffix);
+    setIsPasswordManuallySet(false);
+    setShowPassword(true); // Reset password visibility to true (visible)
+    form.reset(defaultFormValues); // Resets to { ..., password: "", ... }
+    // Explicitly set initial password with only the suffix if lastName is empty
+    form.setValue('password', newSuffix, { shouldValidate: true, shouldDirty: false });
+
+    setAvatarPreview(null);
+    setLicensePreview(null);
+    // Reset address related states if they are not reset by form.reset
+    setProvinces([]);
+    setCities([]);
+    setBarangays([]);
+    form.setValue("license_expiration_date", ""); // Ensure this is reset if not in defaultFormValues
+    setActiveTab('account');
+    if (avatarFileInputRef.current) {
+      avatarFileInputRef.current.value = '';
+    }
+    if (licenseFileInputRef.current) {
+      licenseFileInputRef.current.value = '';
+    }
+  };
 
   // --- API Data Fetching --- //
 
@@ -239,7 +278,25 @@ const CreateDriver = () => {
     fetchBarangays()
   }, [form.watch('city')])
 
-  // --- Helper Functions --- //
+  // Effect to initialize and reset form states when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      initializeAndResetFormStates();
+    }
+  }, [isOpen]);
+
+  // Effect for dynamic password generation
+  useEffect(() => {
+    if (isOpen && !isPasswordManuallySet && passwordSuffix) {
+      const lastName = form.watch('lastName');
+      const newPassword = `${lastName || ''}${passwordSuffix}`;
+      form.setValue('password', newPassword, { shouldValidate: true, shouldDirty: false });
+    }
+  }, [form.watch('lastName'), passwordSuffix, isPasswordManuallySet, isOpen, form]);
+
+
+  // --- Helper Functions --- // (Original location of generateFullName, formatCompleteAddress, resetForm, closeDialog etc.)
+  // Note: resetForm is now simplified as its logic is moved to initializeAndResetFormStates
 
   // Generate the full name from firstName, middleName, and lastName
   const generateFullName = (firstName, middleName, lastName) => {
@@ -270,17 +327,7 @@ const CreateDriver = () => {
 
   // Resets the form fields, image previews, and active tab
   const resetForm = () => {
-    form.reset(defaultFormValues)
-    setAvatarPreview(null)
-    setLicensePreview(null)
-    form.setValue("license_expiration_date", "")
-    setActiveTab('account')
-    if (avatarFileInputRef.current) {
-      avatarFileInputRef.current.value = ''
-    }
-    if (licenseFileInputRef.current) {
-      licenseFileInputRef.current.value = ''
-    }
+    initializeAndResetFormStates(); // Call the new comprehensive reset function
   }
 
   // Closes the dialog and resets the form
@@ -388,7 +435,12 @@ const CreateDriver = () => {
 
   // --- Render Logic --- //
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => open ? setIsOpen(true) : closeDialog()}>
+    <Dialog open={isOpen} onOpenChange={(open) => {
+      setIsOpen(open);
+      if (!open) { // If dialog is closing
+        closeDialog(); // Ensure form is reset
+      }
+    }}>
       <DialogTrigger asChild>
         <Button>
           <Icon icon="mdi:account-plus" className="mr-2" />
@@ -477,9 +529,29 @@ const CreateDriver = () => {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel>Password *</FormLabel>
                       <FormControl>
-                        <Input placeholder="••••••••" type="password" {...field} />
+                        <div className="relative flex items-center">
+                          <Input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="Enter password"
+                            {...field}
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setIsPasswordManuallySet(true);
+                            }}
+                            className="pr-10" // Add padding for the button
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="absolute right-0 h-full px-3 py-2 hover:bg-transparent"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            <Icon icon={showPassword ? "mdi:eye-off" : "mdi:eye"} className="h-4 w-4" />
+                          </Button>
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>

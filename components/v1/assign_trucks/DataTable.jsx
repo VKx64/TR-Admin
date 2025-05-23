@@ -123,6 +123,28 @@ const DataTable = ({ trucks = [], drivers = [], onAssignDriver, refreshData }) =
         header: "Assign Driver",
         cell: (props) => <AssignDriverCell {...props} meta={{ drivers, onAssignDriver, refreshData }} />,
       },
+      {
+        accessorFn: (row) => row?.assigned_date,
+        header: "Assigned Date",
+        cell: ({ getValue }) => {
+          const date = getValue();
+          if (!date) return "-";
+          // Format date to YYYY-MM-DD HH:mm
+          try {
+            const d = new Date(date);
+            if (isNaN(d.getTime())) return "-"; // Invalid date
+            const year = d.getFullYear();
+            const month = (d.getMonth() + 1).toString().padStart(2, '0');
+            const day = d.getDate().toString().padStart(2, '0');
+            const hours = d.getHours().toString().padStart(2, '0');
+            const minutes = d.getMinutes().toString().padStart(2, '0');
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+          } catch (e) {
+            console.error("Error formatting date:", e, "Raw date:", date);
+            return "-"; // Fallback for any unexpected error during formatting
+          }
+        },
+      },
     ],
     [drivers, onAssignDriver, refreshData]
   );
