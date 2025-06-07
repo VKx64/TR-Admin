@@ -32,7 +32,7 @@ const data = {
       title: "Trucks",
       url: "",
       icon: SquareTerminal,
-      isActive: true,
+      isActive: false, // Changed to false
       items: [
         {
           title: "Manage Trucks",
@@ -47,8 +47,12 @@ const data = {
           url: "/refuel",
         },
         {
-          title: "Truck Tracking",
+          title: "Truck GPS",
           url: "/gps",
+        },
+        {
+          title: "New Vehicle",
+          url: "/create_trucks",
         },
       ],
     },
@@ -56,7 +60,7 @@ const data = {
       title: "Drivers",
       url: "#",
       icon: Bot,
-      isActive: true,
+      isActive: false, // Changed to false
       items: [
         {
           title: "View Drivers",
@@ -72,7 +76,7 @@ const data = {
       title: "Maintenance",
       url: "#",
       icon: BookOpen,
-      isActive: true,
+      isActive: false, // Changed to false
       items: [
         {
           title: "Manage Maintenance",
@@ -92,7 +96,7 @@ const data = {
       title: "Analytics",
       url: "#",
       icon: BookOpen,
-      isActive: true,
+      isActive: false, // Changed to false
       items: [
         {
           title: "Fuel Data",
