@@ -62,7 +62,17 @@ const AssignDriverCell = ({ row, meta }) => {
   const [loading, setLoading] = useState(false);
   const truck = row.original;
   const currentDriverId = truck.users_id || 'unassigned';
-  const { drivers, onAssignDriver } = meta;
+  const { drivers, trucks, getAvailableDriversForTruck, onAssignDriver } = meta;
+  // Get available drivers for this specific truck
+  const availableDriversForTruck = getAvailableDriversForTruck ?
+    getAvailableDriversForTruck(truck.id, trucks, drivers) :
+    drivers;
+
+  // If truck has a currently assigned driver, ensure they appear in the dropdown
+  const currentDriver = drivers.find(driver => driver.id === truck.users_id);
+  const driversToShow = currentDriver && !availableDriversForTruck.find(d => d.id === currentDriver.id)
+    ? [currentDriver, ...availableDriversForTruck]
+    : availableDriversForTruck;
 
   // Handle driver assignment
   const handleDriverAssignment = async (driverId) => {
@@ -91,21 +101,26 @@ const AssignDriverCell = ({ row, meta }) => {
       >
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Assign driver..." />
-        </SelectTrigger>
-        <SelectContent>
+        </SelectTrigger>        <SelectContent>
           <SelectItem value="unassigned">Unassigned</SelectItem>
-          {drivers.map(driver => (
-            <SelectItem key={driver.id} value={driver.id}>
-              {driver.username}
+          {driversToShow.length === 0 ? (
+            <SelectItem value="no-drivers" disabled>
+              No available drivers
             </SelectItem>
-          ))}
+          ) : (
+            driversToShow.map(driver => (
+              <SelectItem key={driver.id} value={driver.id}>
+                {driver.username}
+              </SelectItem>
+            ))
+          )}
         </SelectContent>
       </Select>
     </div>
   );
 };
 
-const DataTable = ({ trucks = [], drivers = [], onAssignDriver, refreshData }) => {
+const DataTable = ({ trucks = [], drivers = [], availableDrivers = [], getAvailableDriversForTruck, onAssignDriver, refreshData }) => {
   const columns = React.useMemo(
     () => [
       {
@@ -121,7 +136,7 @@ const DataTable = ({ trucks = [], drivers = [], onAssignDriver, refreshData }) =
       {
         id: "assign",
         header: "Assign Driver",
-        cell: (props) => <AssignDriverCell {...props} meta={{ drivers, onAssignDriver, refreshData }} />,
+        cell: (props) => <AssignDriverCell {...props} meta={{ drivers, trucks, getAvailableDriversForTruck, onAssignDriver, refreshData }} />,
       },
       {
         accessorFn: (row) => row?.assigned_date,
@@ -146,7 +161,7 @@ const DataTable = ({ trucks = [], drivers = [], onAssignDriver, refreshData }) =
         },
       },
     ],
-    [drivers, onAssignDriver, refreshData]
+    [drivers, trucks, getAvailableDriversForTruck, onAssignDriver, refreshData]
   );
 
   const table = useReactTable({

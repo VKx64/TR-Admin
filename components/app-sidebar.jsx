@@ -24,100 +24,84 @@ import {
   SidebarRail,
 } from "@/components/ui/sidebar";
 
-// This is sample data.
+// Navigation configuration
 const data = {
-  // Truck Navigation
+  // Main Navigation
   navMain: [
     {
-      title: "Trucks",
+      title: "Truck Management",
       url: "",
       icon: SquareTerminal,
-      isActive: false, // Changed to false
+      isActive: false,
       items: [
         {
-          title: "Manage Trucks",
+          title: "Vehicle Overview",
           url: "/trucks",
         },
         {
-          title: "Assign Trucks",
+          title: "Vehicle Assignment",
           url: "/assign_trucks",
         },
         {
-          title: "Refuel Trucks",
+          title: "Fuel Management",
           url: "/refuel",
         },
         {
-          title: "Truck GPS",
+          title: "GPS Tracking",
           url: "/gps",
         },
         {
-          title: "New Vehicle",
+          title: "Add New Vehicle",
           url: "/create_trucks",
         },
       ],
     },
     {
-      title: "Drivers",
+      title: "Driver Operations",
       url: "#",
       icon: Bot,
-      isActive: false, // Changed to false
+      isActive: false,
       items: [
         {
-          title: "View Drivers",
+          title: "Driver Directory",
           url: "/drivers",
         },
         {
-          title: "Route Drivers",
+          title: "Route Planning",
           url: "#",
         },
       ],
     },
     {
-      title: "Maintenance",
+      title: "Maintenance & Service",
       url: "#",
       icon: BookOpen,
-      isActive: false, // Changed to false
+      isActive: false,
       items: [
         {
-          title: "Manage Maintenance",
+          title: "Service Overview",
           url: "/maintenance",
         },
         {
-          title: "Maintenance Request",
+          title: "Service Requests",
           url: "/maintenance_request",
         },
         {
-          title: "Maintenance Logs",
+          title: "Service History",
           url: "/maintenance_history",
         },
       ],
     },
-    {
-      title: "Analytics",
-      url: "#",
-      icon: BookOpen,
-      isActive: false, // Changed to false
-      items: [
-        {
-          title: "Fuel Data",
-          url: "#",
-        },
-        {
-          title: "Performance Data",
-          url: "#",
-        },
-        {
-          title: "Truck Data",
-          url: "#",
-        },
-      ],
-    },
   ],
-
-  // Quick Links Section
+  // Quick Access Links
   projects: [
     {
-      name: "Truck Management",
+      name: "Analytics Dashboard",
+      url: "/",
+      icon: Frame,
+    },
+    {
+      name: "Truck Overview",
       url: "/trucks",
       icon: Frame,
     },
@@ -127,12 +111,7 @@ const data = {
       icon: PieChart,
     },
     {
-      name: "Tracking Information",
-      url: "#",
-      icon: Map,
-    },
-    {
-      name: "Maintenance Request",
+      name: "Service Requests",
       url: "/maintenance_request",
       icon: Map,
     },
@@ -140,6 +119,8 @@ const data = {
 };
 
 export function AppSidebar({ ...props }) {
+  // State to track if component is mounted (client-side)
+  const [isMounted, setIsMounted] = useState(false);
 
   // Default Data
   const [userData, setUserData] = useState({
@@ -150,6 +131,9 @@ export function AppSidebar({ ...props }) {
 
   // Fetch Actual Data
   useEffect(() => {
+    // Set mounted flag first
+    setIsMounted(true);
+
     // Update user data once the component mounts on client side
     if (pb.authStore.record) {
       const userName = pb.authStore.record.name || '';
@@ -164,6 +148,13 @@ export function AppSidebar({ ...props }) {
     }
   }, []);
 
+  // Don't render user data until component is mounted to prevent hydration mismatch
+  const displayUserData = isMounted ? userData : {
+    name: 'Guest User',
+    email: 'No email available',
+    avatar: '/Images/avatar_placeholder.jpg',
+  };
+
   return (
     <Sidebar collapsible="icon" {...props}>
       <SidebarHeader>
@@ -172,9 +163,8 @@ export function AppSidebar({ ...props }) {
       <SidebarContent>
         <NavProjects projects={data.projects} />
         <NavMain items={data.navMain} />
-      </SidebarContent>
-      <SidebarFooter>
-        <NavUser user={userData} />
+      </SidebarContent>      <SidebarFooter>
+        <NavUser user={displayUserData} />
       </SidebarFooter>
       <SidebarRail />
     </Sidebar>

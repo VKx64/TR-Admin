@@ -35,25 +35,21 @@ import {
 
 import { logout } from "@/services/authentication"
 import { useRouter } from "next/navigation"
-import pb from "@/services/pocketbase"
 
-export function NavUser() {
+export function NavUser({ user }) {
   const { isMobile } = useSidebar()
   const router = useRouter()
-  const [user, setUser] = useState(null);
+  const [isMounted, setIsMounted] = useState(false);
 
+  // Only render avatar after component is mounted to prevent hydration mismatch
   useEffect(() => {
-    const currentUser = pb.authStore?.record;
-    if (currentUser) {
-      setUser(currentUser);
-      console.log("User data:", currentUser);
-    }
+    setIsMounted(true);
   }, []);
 
-  // Derive values from state, handling null case
-  const username = user?.username;
-  const email = user?.email;
-  const userAvatar = user ? `${process.env.NEXT_PUBLIC_POCKETBASE_URL}/api/files/${user.collectionId}/${user.id}/${user.avatar}` : null;
+  // Use the user prop passed from AppSidebar
+  const username = user?.name || 'Guest User';
+  const email = user?.email || 'No email available';
+  const userAvatar = user?.avatar || '/Images/avatar_placeholder.jpg';
 
   // Logout handler function
   const handleLogout = () => {
@@ -68,16 +64,17 @@ export function NavUser() {
           <DropdownMenuTrigger asChild>
             <SidebarMenuButton
               size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-              <Avatar className="h-8 w-8 rounded-lg">
-                <AvatarImage src={userAvatar} alt={username || ''} />
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">              <Avatar className="h-8 w-8 rounded-lg">
+                {isMounted ? (
+                  <AvatarImage src={userAvatar} alt={username || ''} />
+                ) : null}
                 <AvatarFallback className="rounded-lg">
-                  {username ? username.charAt(0).toUpperCase() : 'U'} {/* Show first letter or 'U' */}
+                  {username ? username.charAt(0).toUpperCase() : 'U'}
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-medium">{username || 'Loading...'}</span>
-                <span className="truncate text-xs">{email || '...'}</span>
+                <span className="truncate font-medium">{username}</span>
+                <span className="truncate text-xs">{email}</span>
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -88,16 +85,17 @@ export function NavUser() {
             align="end"
             sideOffset={4}>
             <DropdownMenuLabel className="p-0 font-normal">
-              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                <Avatar className="h-8 w-8 rounded-lg">
-                  <AvatarImage src={userAvatar} alt={username || ''} />
+              <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">                <Avatar className="h-8 w-8 rounded-lg">
+                  {isMounted ? (
+                    <AvatarImage src={userAvatar} alt={username || ''} />
+                  ) : null}
                   <AvatarFallback className="rounded-lg">
                     {username ? username.charAt(0).toUpperCase() : 'U'}
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-medium">{username || 'Loading...'}</span>
-                  <span className="truncate text-xs">{email || '...'}</span>
+                  <span className="truncate font-medium">{username}</span>
+                  <span className="truncate text-xs">{email}</span>
                 </div>
               </div>
             </DropdownMenuLabel>
