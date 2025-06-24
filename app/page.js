@@ -13,6 +13,10 @@ import pb from '@/services/pocketbase';
 const Dashboard = () => {  const [data, setData] = useState({
     fleet: { total: 0, assigned: 0, utilization: 0 },
     maintenance: { totalCost: 0, pendingRequests: 0, completionRate: 0, avgDays: 0 },
+    maintenanceAnalytics: {
+      vehiclesInMaintenance: [],
+      issueProneVehicles: [],
+    },
     fuel: { totalCost: 0, totalGallons: 0, avgMPG: 0, costPerMile: 0 },
     financial: { totalOperating: 0, costPerTruck: 0 },
     charts: {
@@ -87,6 +91,36 @@ const Dashboard = () => {  const [data, setData] = useState({
       const totalTrucks = trucks.length;
       const assignedTrucks = trucks.filter(truck => truck.users_id).length;
       const utilizationRate = totalTrucks > 0 ? (assignedTrucks / totalTrucks) * 100 : 0;
+
+      // Calculate Maintenance Analytics for vehicles
+      const maintenanceByTruck = maintenanceRecords.reduce((acc, record) => {
+        const truckId = record.truck;
+        if (truckId) {
+          if (!acc[truckId]) {
+            acc[truckId] = [];
+          }
+          acc[truckId].push(record);
+        }
+        return acc;
+      }, {});
+
+      const vehiclesInMaintenance = Object.keys(maintenanceByTruck).map(truckId => {
+        const truckDetails = trucks.find(t => t.id === truckId);
+        const truckRecords = maintenanceByTruck[truckId];
+        const lastMaintenance = truckRecords.sort((a, b) => new Date(b.completion_date) - new Date(a.completion_date))[0];
+
+        return {
+          id: truckId,
+          plateNumber: truckDetails ? truckDetails.plate_number : 'Unknown Truck',
+          maintenanceCount: truckRecords.length,
+          lastMaintenanceDate: lastMaintenance ? lastMaintenance.completion_date : 'N/A',
+        };
+      });
+
+      const ISSUE_PRONE_THRESHOLD = 3; // Example threshold
+      const issueProneVehicles = vehiclesInMaintenance.filter(
+        truck => truck.maintenanceCount >= ISSUE_PRONE_THRESHOLD
+      );
 
       // Calculate Maintenance Analytics
       const totalMaintenanceCost = maintenanceRecords.reduce((sum, record) => sum + (record.cost || 0), 0);
@@ -343,7 +377,11 @@ const Dashboard = () => {  const [data, setData] = useState({
         fuelLogs: {
           recentEntries: recentFuelEntries
         },
-        forecasting: forecastingData
+        forecasting: forecastingData,
+        maintenanceAnalytics: {
+          vehiclesInMaintenance,
+          issueProneVehicles,
+        },
       });
 
       setLastUpdated(new Date());
@@ -410,37 +448,98 @@ const Dashboard = () => {  const [data, setData] = useState({
           Refresh Data
         </Button>
       </div>      {/* Key Metrics Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {/* Fleet Utilization */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fleet Utilization</CardTitle>
-            <Icon icon="material-symbols:local-shipping" className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.fleet.utilization}%</div>
-            <p className="text-xs text-muted-foreground">
-              {data.fleet.assigned} of {data.fleet.total} trucks assigned
-            </p>
-            <Progress value={data.fleet.utilization} className="mt-2" />
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-4 md:col-span-1">
+            {/* Fleet Utilization */}
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Fleet Utilization</CardTitle>
+                    <Icon icon="material-symbols:local-shipping" className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold">{data.fleet.utilization}%</div>
+                    <p className="text-xs text-muted-foreground">
+                    {data.fleet.assigned} of {data.fleet.total} trucks assigned
+                    </p>
+                    <Progress value={data.fleet.utilization} className="mt-2" />
+                </CardContent>
+            </Card>
 
-        {/* Fuel Efficiency */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Fuel Efficiency</CardTitle>
-            <Icon icon="material-symbols:local-gas-station" className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{data.fuel.avgMPG} MPG</div>
-            <p className="text-xs text-muted-foreground">
-              {formatCurrency(data.fuel.costPerMile)}/mile
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {data.fuel.totalGallons} gallons • {formatCurrency(data.fuel.totalCost)}
-            </p>
-          </CardContent>
+            {/* Fuel Efficiency */}
+            <Card>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium">Fuel Efficiency</CardTitle>
+                    <Icon icon="material-symbols:local-gas-station" className="h-4 w-4 text-muted-foreground" />
+                </CardHeader>
+                <CardContent>
+                    <div className="text-2xl font-bold">{data.fuel.avgMPG} MPG</div>
+                    <p className="text-xs text-muted-foreground">
+                    {formatCurrency(data.fuel.costPerMile)}/mile
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                    {data.fuel.totalGallons} gallons • {formatCurrency(data.fuel.totalCost)}
+                    </p>
+                </CardContent>
+            </Card>
+        </div>
+        {/* Maintenance Analytics */}
+        <Card className="md:col-span-2">
+            <CardHeader>
+            <CardTitle>Maintenance Hotspots</CardTitle>
+            <CardDescription>
+                Vehicles with frequent maintenance and issue-prone indicators.
+            </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-6 md:grid-cols-2">
+            <div>
+                <h3 className="text-lg font-medium">Maintenance History</h3>
+                <div className="mt-4 space-y-4 max-h-60 overflow-y-auto">
+                {data.maintenanceAnalytics.vehiclesInMaintenance.length > 0 ? (
+                    data.maintenanceAnalytics.vehiclesInMaintenance.map(truck => (
+                    <div key={truck.id} className="flex items-center justify-between p-2 rounded-lg bg-blue-100">
+                        <div>
+                        <p className="font-medium">{truck.plateNumber}</p>
+                        <p className="text-sm text-muted-foreground">
+                            {truck.maintenanceCount} maintenance records
+                        </p>
+                        </div>
+                        <div className="text-right">
+                        <p className="text-sm text-muted-foreground">Last serviced</p>
+                        <p className="font-medium">
+                            {truck.lastMaintenanceDate !== 'N/A' ? format(new Date(truck.lastMaintenanceDate), 'MMM dd, yyyy') : 'N/A'}
+                        </p>
+                        </div>
+                    </div>
+                    ))
+                ) : (
+                    <p className="text-sm text-muted-foreground">No maintenance records found.</p>
+                )}
+                </div>
+            </div>
+            <div>
+                <h3 className="text-lg font-medium">Issue-Prone Vehicles</h3>
+                <div className="mt-4 space-y-2">
+                {data.maintenanceAnalytics.issueProneVehicles.length > 0 ? (
+                    data.maintenanceAnalytics.issueProneVehicles.map(truck => (
+                    <div key={truck.id} className="flex items-center p-2 rounded-lg bg-destructive/10">
+                        <Icon icon="ph:warning-fill" className="w-5 h-5 text-destructive mr-3" />
+                        <div>
+                        <p className="font-medium">{truck.plateNumber}</p>
+                        <p className="text-sm text-muted-foreground">
+                            {truck.maintenanceCount} maintenance records. High frequency detected.
+                        </p>
+                        </div>
+                    </div>
+                    ))
+                ) : (
+                    <div className="flex items-center p-2 rounded-lg bg-green-100">
+                    <Icon icon="ph:check-circle-fill" className="w-5 h-5 text-green-600 mr-3" />
+                    <p className="text-sm text-green-700">No issue-prone vehicles detected.</p>
+                    </div>
+                )}
+                </div>
+            </div>
+            </CardContent>
         </Card>
       </div>{/* Quick Stats Grid */}
       <div className="grid gap-4 md:grid-cols-3">

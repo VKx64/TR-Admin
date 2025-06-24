@@ -1,165 +1,75 @@
-import React, { useState } from "react";
-import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-
+import React, { useMemo } from "react";
 import {
   useReactTable,
   getCoreRowModel,
   flexRender,
 } from "@tanstack/react-table";
 
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
-
 import { format } from "date-fns";
-
-// Component specifically for rendering the Action buttons
-const ActionsCell = ({ row, meta }) => {
-  const recordId = row.original.id;
-  const refreshData = meta?.refreshData;
-  const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
-
-  const handleView = () => setIsViewDialogOpen(true);
-
-  // Function to handle the delete confirmation
-  const handleDeleteConfirm = async () => {
-    try {
-      // TODO: Implement delete maintenance record logic
-      // const success = await deleteMaintenance(recordId);
-      const success = true; // Placeholder until implementation
-
-      if (success) {
-        toast.success("Maintenance record deleted successfully.");
-        // Call refreshData if it exists to refresh the table
-        if (typeof refreshData === "function") {
-          refreshData();
-        } else {
-          console.log("Maintenance record deleted, please refresh the list manually.");
-        }
-      } else {
-        toast.error("Failed to delete maintenance record.");
-      }
-    } catch (error) {
-      console.error("Error deleting maintenance record:", error);
-      toast.error("An error occurred while deleting the maintenance record.");
-    }
-  };
-
-  return (
-    <div className="flex gap-2">
-      <Button size="sm" variant="outline" onClick={handleView}>
-        View Details
-      </Button>
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button size="sm" variant="destructive">
-            Delete
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the
-              maintenance record.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            {/* Call handleDeleteConfirm when Continue is clicked */}
-            <AlertDialogAction onClick={handleDeleteConfirm}>
-              Continue
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* TODO: Implement ReadMaintenance Dialog */}
-      {/* <ReadMaintenance
-        isOpen={isViewDialogOpen}
-        onClose={() => setIsViewDialogOpen(false)}
-        maintenanceId={recordId}
-      /> */}
-    </div>
-  );
-};
 
 const formatDate = (dateString) => {
   if (!dateString) return "-";
   try {
     return format(new Date(dateString), "MMM d, yyyy");
   } catch (error) {
-    return dateString || "-";
+    console.error("Invalid date:", dateString, error);
+    return "Invalid Date";
   }
 };
 
-const DataTable = ({ maintenanceRecords = [], refreshData }) => {
-  const columns = React.useMemo(
+const DataTable = ({ records, refreshData }) => {
+  const data = useMemo(() => records, [records]);
+
+  const columns = useMemo(
     () => [
       {
-        accessorFn: (row) => row?.expand?.truck?.plate_number,
         header: "Truck",
-        cell: ({ getValue }) => getValue() || "-",
+        accessorKey: "expand.truck.plate_number",
+        cell: ({ row }) => row.original.expand?.truck?.plate_number || "N/A",
       },
       {
-        accessorFn: (row) => row?.expand?.truck?.expand?.users_id?.username,
-        header: "Driver",
-        cell: ({ getValue }) => getValue() || "-",
-      },
-      {
-        accessorFn: (row) => row?.expand?.maintenance_type?.name,
         header: "Maintenance Type",
-        cell: ({ getValue }) => getValue() || "-",
+        accessorKey: "expand.maintenance_type.name",
+        cell: ({ row }) => row.original.expand?.maintenance_type?.name || "N/A",
       },
       {
-        accessorFn: (row) => formatDate(row?.completion_date),
         header: "Completion Date",
-        cell: ({ getValue }) => getValue(),
+        accessorKey: "completion_date",
+        cell: ({ getValue }) => formatDate(getValue()),
       },
       {
-        accessorFn: (row) => row?.expand?.logging_admin?.username,
-        header: "Logged By",
-        cell: ({ getValue }) => getValue() || "-",
-      },
-      {
-        accessorFn: (row) => row?.cost ? `$${row.cost.toFixed(2)}` : "-",
         header: "Cost",
-        cell: ({ getValue }) => getValue(),
+        accessorKey: "cost",
+        cell: ({ getValue }) => `$${getValue()?.toFixed(2)}`,
       },
       {
-        id: "actions",
-        header: "Actions",
-        cell: (props) => <ActionsCell {...props} meta={{ refreshData }} />,
+        header: "Logged By",
+        accessorKey: "expand.logging_admin.username",
+        cell: ({ row }) => row.original.expand?.logging_admin?.username || "N/A",
       },
     ],
-    [refreshData]
+    []
   );
 
   const table = useReactTable({
-    data: maintenanceRecords,
-    columns: columns,
+    data,
+    columns,
     getCoreRowModel: getCoreRowModel(),
+    meta: {
+      refreshData,
+    },
   });
 
   return (
-    <div className="rounded-md border overflow-x-auto">
-      <table className="min-w-full table-auto">
-        <thead>
+    <div className="rounded-md border bg-white shadow-sm">
+      <table className="min-w-full w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id}>
               {headerGroup.headers.map((header) => (
                 <th
                   key={header.id}
-                  className="px-4 py-3 border-b text-left text-sm font-medium text-muted-foreground"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
                   {header.isPlaceholder
                     ? null
@@ -172,14 +82,11 @@ const DataTable = ({ maintenanceRecords = [], refreshData }) => {
             </tr>
           ))}
         </thead>
-        <tbody>
+        <tbody className="bg-white divide-y divide-gray-200">
           {table.getRowModel().rows.map((row) => (
-            <tr key={row.id} className="hover:bg-muted/50">
+            <tr key={row.id}>
               {row.getVisibleCells().map((cell) => (
-                <td
-                  key={cell.id}
-                  className="px-4 py-2 border-b text-sm align-middle"
-                >
+                <td key={cell.id} className="px-6 py-4 whitespace-nowrap text-sm">
                   {flexRender(cell.column.columnDef.cell, cell.getContext())}
                 </td>
               ))}
@@ -187,11 +94,6 @@ const DataTable = ({ maintenanceRecords = [], refreshData }) => {
           ))}
         </tbody>
       </table>
-      {maintenanceRecords.length === 0 && (
-        <div className="text-center p-4 text-muted-foreground">
-          No maintenance history records available.
-        </div>
-      )}
     </div>
   );
 };
