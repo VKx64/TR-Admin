@@ -1229,7 +1229,7 @@ const Dashboard = () => {  const [data, setData] = useState({
                 <div>
                   <p className="text-sm font-medium text-green-700">Great Job!</p>
                   <p className="text-xs text-green-600">
-                    You're within budget and maintaining efficient operations.
+                    You&apos;re within budget and maintaining efficient operations.
                   </p>
                 </div>
               </div>
