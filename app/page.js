@@ -1193,7 +1193,7 @@ const Dashboard = () => {  const [data, setData] = useState({
                 <div>
                   <p className="text-sm font-medium text-red-700">Budget Alert</p>
                   <p className="text-xs text-red-600">
-                    You're {formatCurrency(data.costAnalytics.budget.variance)} over budget this month.
+                    You&apos;re {formatCurrency(data.costAnalytics.budget.variance)} over budget this month.
                   </p>
                 </div>
               </div>
