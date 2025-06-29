@@ -1,18 +1,20 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ComposedChart, Area, AreaChart } from 'recharts';
 import { Icon } from '@iconify/react';
 import { startOfMonth, endOfMonth, subMonths, format, parseISO } from 'date-fns';
 import pb from '@/services/pocketbase';
 
 const Dashboard = () => {  const [data, setData] = useState({
     fleet: { total: 0, assigned: 0, utilization: 0 },
-    maintenance: { totalCost: 0, pendingRequests: 0, completionRate: 0, avgDays: 0 },
+    maintenance: { totalCost: 0, pendingRequests: 0, completionRate: 0, avgDays: 0, laborCost: 0 },
     maintenanceAnalytics: {
       vehiclesInMaintenance: [],
       issueProneVehicles: [],
@@ -21,10 +23,30 @@ const Dashboard = () => {  const [data, setData] = useState({
     financial: { totalOperating: 0, costPerTruck: 0 },
     charts: {
       maintenanceTrend: [],
-      fuelTrend: []
+      fuelTrend: [],
+      costBreakdown: []
     },
     fuelLogs: {
       recentEntries: []
+    },
+    costAnalytics: {
+      breakdown: {
+        fuel: 0,
+        maintenance: 0,
+        labor: 0,
+        parts: 0,
+        other: 0
+      },
+      budget: {
+        monthly: 50000, // Default monthly budget
+        variance: 0,
+        percentUsed: 0
+      },
+      efficiency: {
+        costPerKm: 0,
+        costPerHour: 0,
+        maintenanceCostPerTruck: 0
+      }
     },
     forecasting: {
       fuelConsumption: {
@@ -48,17 +70,37 @@ const Dashboard = () => {  const [data, setData] = useState({
         next60Days: 0,
         next90Days: 0
       }
+    },
+    usageAnalytics: {
+      highUsageVehicles: [],
+      lowUsageVehicles: [],
+      driverUsage: [],
+      averageUsageScore: 0
+    },
+    mpgAnalytics: {
+      byVehicleType: [],
+      trends: [],
+      topPerformers: [],
+      poorPerformers: []
     }
   });
 
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
+  const [usageThreshold, setUsageThreshold] = useState('medium'); // low, medium, high
+
+  // Usage threshold configurations
+  const thresholdConfigs = {
+    low: { high: 50, low: 20 },    // More relaxed thresholds
+    medium: { high: 70, low: 30 }, // Balanced thresholds
+    high: { high: 90, low: 50 }    // Strict thresholds
+  };
 
   // Get current month date range
   const currentMonth = new Date();
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
-  const fetchAnalyticsData = async () => {
+  const fetchAnalyticsData = useCallback(async () => {
     setLoading(true);
     try {
       console.log('Fetching analytics data...');
@@ -348,7 +390,336 @@ const Dashboard = () => {  const [data, setData] = useState({
         };
       };
 
-      const forecastingData = calculateForecasting();      setData({
+      const forecastingData = calculateForecasting();
+
+      // Enhanced cost analytics calculations
+      const calculateCostAnalytics = () => {
+        // Calculate labor cost from maintenance completion_data
+        let laborCost = 0;
+        let partsCost = 0;
+        let otherCost = 0;
+
+        maintenanceRecords.forEach(record => {
+          if (record.completion_data) {
+            try {
+              const completionData = typeof record.completion_data === 'string'
+                ? JSON.parse(record.completion_data)
+                : record.completion_data;
+
+              laborCost += completionData.laborCost || 0;
+              partsCost += completionData.partsCost || 0;
+              otherCost += completionData.otherCost || 0;
+            } catch (e) {
+              // If parsing fails, assume basic cost structure
+              const recordCost = record.cost || 0;
+              laborCost += recordCost * 0.4; // Assume 40% labor
+              partsCost += recordCost * 0.6; // Assume 60% parts
+            }
+          } else {
+            // Default cost breakdown if no completion_data
+            const recordCost = record.cost || 0;
+            laborCost += recordCost * 0.4;
+            partsCost += recordCost * 0.6;
+          }
+        });
+
+        // Cost breakdown for pie chart
+        const costBreakdown = [
+          { category: 'Fuel', cost: totalFuelCost, percentage: 0 },
+          { category: 'Labor', cost: laborCost, percentage: 0 },
+          { category: 'Parts', cost: partsCost, percentage: 0 },
+          { category: 'Other', cost: otherCost, percentage: 0 }
+        ].filter(item => item.cost > 0); // Only include categories with actual costs
+
+        const totalCosts = costBreakdown.reduce((sum, item) => sum + item.cost, 0);
+        costBreakdown.forEach(item => {
+          item.percentage = totalCosts > 0 ? Math.round((item.cost / totalCosts) * 100) : 0;
+        });
+
+        // Budget analysis
+        const currentMonthCost = totalFuelCost + totalMaintenanceCost;
+        const monthlyBudget = 50000; // Fixed monthly budget
+        const variance = currentMonthCost - monthlyBudget;
+        const percentUsed = monthlyBudget > 0 ? (currentMonthCost / monthlyBudget) * 100 : 0;
+
+        // Efficiency metrics
+        const totalKmDriven = truckStatistics.reduce((sum, stat) => sum + (stat.total_mileage || 0), 0);
+        const totalHoursOperated = totalTrucks * 8 * 30; // Assume 8 hours/day, 30 days/month
+        const costPerKm = totalKmDriven > 0 ? currentMonthCost / totalKmDriven : 0;
+        const costPerHour = totalHoursOperated > 0 ? currentMonthCost / totalHoursOperated : 0;
+        const maintenanceCostPerTruck = totalTrucks > 0 ? totalMaintenanceCost / totalTrucks : 0;
+
+        return {
+          breakdown: {
+            fuel: totalFuelCost,
+            maintenance: totalMaintenanceCost - laborCost,
+            labor: laborCost,
+            parts: partsCost,
+            other: otherCost
+          },
+          budget: {
+            monthly: monthlyBudget,
+            variance: variance,
+            percentUsed: Math.round(percentUsed)
+          },
+          efficiency: {
+            costPerKm: Math.round(costPerKm * 100) / 100,
+            costPerHour: Math.round(costPerHour * 100) / 100,
+            maintenanceCostPerTruck: Math.round(maintenanceCostPerTruck)
+          },
+          charts: {
+            costBreakdown
+          }
+        };
+      };
+
+      const costAnalytics = calculateCostAnalytics();
+
+      // Calculate Usage Analytics
+      const calculateUsageAnalytics = () => {
+        const currentThresholds = thresholdConfigs[usageThreshold];
+
+        // Calculate usage scores for each vehicle
+        const vehicleUsageScores = trucks.map(truck => {
+          // Get fuel records for this truck
+          const truckFuelRecords = fuelRecords.filter(f => f.truck_id === truck.id);
+
+          // Get maintenance records for this truck
+          const truckMaintenanceRecords = maintenanceRecords.filter(m => m.truck === truck.id);
+
+          // Get statistics for this truck
+          const truckStats = truckStatistics.find(s => s.id === truck.truck_statistics);
+
+          // Calculate metrics
+          const totalMileage = truckStats?.total_mileage || 0;
+          const fuelFrequency = truckFuelRecords.length;
+          const maintenanceFrequency = truckMaintenanceRecords.length;
+
+          // Days since last activity
+          let daysSinceLastActivity = 0;
+          const recentFuel = truckFuelRecords.sort((a, b) => new Date(b.created) - new Date(a.created))[0];
+          const recentMaintenance = truckMaintenanceRecords.sort((a, b) => new Date(b.completion_date) - new Date(a.completion_date))[0];
+
+          const lastFuelDate = recentFuel ? new Date(recentFuel.created) : null;
+          const lastMaintenanceDate = recentMaintenance ? new Date(recentMaintenance.completion_date) : null;
+
+          const lastActivityDate = lastFuelDate && lastMaintenanceDate
+            ? new Date(Math.max(lastFuelDate.getTime(), lastMaintenanceDate.getTime()))
+            : lastFuelDate || lastMaintenanceDate;
+
+          if (lastActivityDate) {
+            daysSinceLastActivity = Math.floor((new Date() - lastActivityDate) / (1000 * 60 * 60 * 24));
+          }
+
+          // Calculate usage score (0-100)
+          // Higher mileage, more fuel entries, recent activity = higher score
+          const mileageScore = Math.min(totalMileage / 10000 * 40, 40); // 40% weight, max at 10k miles
+          const fuelScore = Math.min(fuelFrequency * 5, 30); // 30% weight, 5 points per fuel entry
+          const activityScore = Math.max(30 - (daysSinceLastActivity / 10), 0); // 30% weight, loses points for inactivity
+
+          const usageScore = Math.round(mileageScore + fuelScore + activityScore);
+
+          // Get driver info
+          const driver = truck.users_id ? driverDetails.find(d => d.id === truck.users_id) : null;
+
+          return {
+            id: truck.id,
+            plateNumber: truck.plate_number,
+            truckType: truck.truck_type || 'Unknown',
+            usageScore,
+            totalMileage,
+            fuelFrequency,
+            maintenanceFrequency,
+            daysSinceLastActivity,
+            driverName: driver?.phone || 'Unassigned', // Using phone as name placeholder
+            isAssigned: !!truck.users_id
+          };
+        });
+
+        // Sort by usage score
+        vehicleUsageScores.sort((a, b) => b.usageScore - a.usageScore);
+
+        // Categorize vehicles
+        const highUsageVehicles = vehicleUsageScores.filter(v => v.usageScore >= currentThresholds.high);
+        const lowUsageVehicles = vehicleUsageScores.filter(v => v.usageScore <= currentThresholds.low);
+
+        // Calculate driver usage patterns
+        const driverUsageMap = {};
+        vehicleUsageScores.forEach(vehicle => {
+          if (vehicle.isAssigned) {
+            if (!driverUsageMap[vehicle.driverName]) {
+              driverUsageMap[vehicle.driverName] = {
+                driverName: vehicle.driverName,
+                vehicleCount: 0,
+                totalUsageScore: 0,
+                vehicles: []
+              };
+            }
+            driverUsageMap[vehicle.driverName].vehicleCount++;
+            driverUsageMap[vehicle.driverName].totalUsageScore += vehicle.usageScore;
+            driverUsageMap[vehicle.driverName].vehicles.push(vehicle);
+          }
+        });
+
+        const driverUsage = Object.values(driverUsageMap).map(driver => ({
+          ...driver,
+          averageUsageScore: Math.round(driver.totalUsageScore / driver.vehicleCount)
+        })).sort((a, b) => b.averageUsageScore - a.averageUsageScore);
+
+        const averageUsageScore = vehicleUsageScores.length > 0
+          ? Math.round(vehicleUsageScores.reduce((sum, v) => sum + v.usageScore, 0) / vehicleUsageScores.length)
+          : 0;
+
+        return {
+          highUsageVehicles,
+          lowUsageVehicles,
+          driverUsage,
+          averageUsageScore,
+          allVehicles: vehicleUsageScores
+        };
+      };
+
+      // Calculate MPG Analytics by Vehicle Type
+      const calculateMPGAnalytics = () => {
+        // Group fuel records by truck type and calculate MPG
+        const mpgByType = {};
+        const mpgTrends = [];
+
+        fuelRecords.forEach(record => {
+          if (record.odometer_reading && record.fuel_amount > 0) {
+            const truck = trucks.find(t => t.id === record.truck_id);
+            if (truck) {
+              const truckType = truck.truck_type || 'Unknown';
+
+              // Find previous fuel record for the same truck to calculate actual MPG
+              const truckFuelHistory = fuelRecords
+                .filter(f => f.truck_id === record.truck_id && f.odometer_reading)
+                .sort((a, b) => new Date(a.created) - new Date(b.created));
+
+              const currentIndex = truckFuelHistory.findIndex(f => f.id === record.id);
+
+              let mpg = 0;
+              if (currentIndex > 0) {
+                const previousRecord = truckFuelHistory[currentIndex - 1];
+                const milesDriven = record.odometer_reading - previousRecord.odometer_reading;
+                if (milesDriven > 0 && milesDriven < 1000) { // Reasonable range check
+                  mpg = milesDriven / record.fuel_amount;
+                }
+              }
+
+              if (mpg > 0 && mpg < 50) { // Valid MPG range
+                // Group by vehicle type
+                if (!mpgByType[truckType]) {
+                  mpgByType[truckType] = {
+                    type: truckType,
+                    mpgReadings: [],
+                    totalMPG: 0,
+                    count: 0,
+                    avgMPG: 0
+                  };
+                }
+
+                mpgByType[truckType].mpgReadings.push({
+                  mpg,
+                  date: record.created,
+                  truckId: record.truck_id,
+                  plateNumber: truck.plate_number
+                });
+                mpgByType[truckType].totalMPG += mpg;
+                mpgByType[truckType].count++;
+
+                // Add to trends data
+                mpgTrends.push({
+                  date: record.created,
+                  mpg,
+                  truckType,
+                  truckId: record.truck_id,
+                  plateNumber: truck.plate_number,
+                  month: format(new Date(record.created), 'MMM yyyy')
+                });
+              }
+            }
+          }
+        });
+
+        // Calculate averages and group trends by month and type
+        const byVehicleType = Object.values(mpgByType).map(typeData => {
+          typeData.avgMPG = Math.round((typeData.totalMPG / typeData.count) * 10) / 10;
+          return typeData;
+        }).sort((a, b) => b.avgMPG - a.avgMPG);
+
+        // Group trends by month for charting
+        const monthlyTrends = {};
+        mpgTrends.forEach(trend => {
+          const key = `${trend.month}-${trend.truckType}`;
+          if (!monthlyTrends[key]) {
+            monthlyTrends[key] = {
+              month: trend.month,
+              truckType: trend.truckType,
+              mpgReadings: [],
+              totalMPG: 0,
+              count: 0
+            };
+          }
+          monthlyTrends[key].mpgReadings.push(trend.mpg);
+          monthlyTrends[key].totalMPG += trend.mpg;
+          monthlyTrends[key].count++;
+        });
+
+        const trends = Object.values(monthlyTrends)
+          .map(monthData => ({
+            month: monthData.month,
+            truckType: monthData.truckType,
+            avgMPG: Math.round((monthData.totalMPG / monthData.count) * 10) / 10
+          }))
+          .sort((a, b) => new Date(a.month + ' 1') - new Date(b.month + ' 1'));
+
+        // Identify top and poor performers
+        const allVehiclesMPG = {};
+        mpgTrends.forEach(trend => {
+          if (!allVehiclesMPG[trend.truckId]) {
+            allVehiclesMPG[trend.truckId] = {
+              truckId: trend.truckId,
+              plateNumber: trend.plateNumber,
+              truckType: trend.truckType,
+              mpgReadings: [],
+              totalMPG: 0,
+              count: 0
+            };
+          }
+          allVehiclesMPG[trend.truckId].mpgReadings.push(trend.mpg);
+          allVehiclesMPG[trend.truckId].totalMPG += trend.mpg;
+          allVehiclesMPG[trend.truckId].count++;
+        });
+
+        const vehiclePerformance = Object.values(allVehiclesMPG)
+          .map(vehicle => ({
+            ...vehicle,
+            avgMPG: Math.round((vehicle.totalMPG / vehicle.count) * 10) / 10
+          }))
+          .filter(vehicle => vehicle.count >= 2) // At least 2 readings
+          .sort((a, b) => b.avgMPG - a.avgMPG);
+
+        const topPerformers = vehiclePerformance.slice(0, 5);
+        const poorPerformers = vehiclePerformance.slice(-5).reverse();
+
+        return {
+          byVehicleType,
+          trends,
+          topPerformers,
+          poorPerformers,
+          allTrends: mpgTrends
+        };
+      };
+
+      const usageAnalytics = calculateUsageAnalytics();
+      const mpgAnalytics = calculateMPGAnalytics();
+
+      // Debug analytics
+      console.log('Usage Analytics Debug:', usageAnalytics);
+      console.log('MPG Analytics Debug:', mpgAnalytics);
+
+      setData({
         fleet: {
           total: totalTrucks,
           assigned: assignedTrucks,
@@ -356,6 +727,7 @@ const Dashboard = () => {  const [data, setData] = useState({
         },
         maintenance: {
           totalCost: totalMaintenanceCost,
+          laborCost: costAnalytics.breakdown.labor,
           pendingRequests,
           completionRate: Math.round(completionRate),
           avgDays: Math.round(avgCompletionDays)
@@ -372,16 +744,20 @@ const Dashboard = () => {  const [data, setData] = useState({
         },
         charts: {
           maintenanceTrend: historicalMaintenance,
-          fuelTrend: historicalFuel
+          fuelTrend: historicalFuel,
+          costBreakdown: costAnalytics.charts.costBreakdown
         },
         fuelLogs: {
           recentEntries: recentFuelEntries
         },
+        costAnalytics: costAnalytics,
         forecasting: forecastingData,
         maintenanceAnalytics: {
           vehiclesInMaintenance,
           issueProneVehicles,
         },
+        usageAnalytics: usageAnalytics,
+        mpgAnalytics: mpgAnalytics
       });
 
       setLastUpdated(new Date());
@@ -390,11 +766,11 @@ const Dashboard = () => {  const [data, setData] = useState({
     } finally {
       setLoading(false);
     }
-  };
+  }, [usageThreshold]); // Add dependencies for useCallback
 
   useEffect(() => {
     fetchAnalyticsData();
-  }, []);
+  }, [fetchAnalyticsData]); // Now depends on the memoized function
   const chartConfig = {
     maintenance: {
       label: "Maintenance",
@@ -402,6 +778,30 @@ const Dashboard = () => {  const [data, setData] = useState({
     },
     fuel: {
       label: "Fuel",
+      color: "hsl(var(--chart-2))"
+    },
+    labor: {
+      label: "Labor",
+      color: "hsl(var(--chart-3))"
+    },
+    parts: {
+      label: "Parts",
+      color: "hsl(var(--chart-4))"
+    },
+    other: {
+      label: "Other",
+      color: "hsl(var(--chart-5))"
+    },
+    total: {
+      label: "Total",
+      color: "hsl(var(--primary))"
+    },
+    mpg: {
+      label: "MPG",
+      color: "hsl(var(--chart-1))"
+    },
+    usageScore: {
+      label: "Usage Score",
       color: "hsl(var(--chart-2))"
     }
   };
@@ -602,6 +1002,242 @@ const Dashboard = () => {  const [data, setData] = useState({
             </div>          </CardContent>        </Card>
       </div>
 
+      {/* Enhanced Cost Analytics Section */}
+      <div className="space-y-6">
+        <div className="flex items-center space-x-2">
+          <Icon icon="material-symbols:analytics" className="h-5 w-5 text-primary" />
+          <h3 className="text-xl font-semibold">Cost Analytics & Budget Insights</h3>
+        </div>
+
+        {/* Budget Overview Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Monthly Budget</CardTitle>
+              <Icon icon="material-symbols:account-balance-wallet" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(data.costAnalytics?.budget?.monthly || 0)}</div>
+              <p className="text-xs text-muted-foreground">
+                {data.costAnalytics?.budget?.percentUsed || 0}% used this month
+              </p>
+              <Progress value={data.costAnalytics?.budget?.percentUsed || 0} className="mt-2" />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Budget Variance</CardTitle>
+              <Icon icon={data.costAnalytics?.budget?.variance >= 0 ? "material-symbols:trending-up" : "material-symbols:trending-down"}
+                    className={`h-4 w-4 ${data.costAnalytics?.budget?.variance >= 0 ? 'text-red-500' : 'text-green-500'}`} />
+            </CardHeader>
+            <CardContent>
+              <div className={`text-2xl font-bold ${data.costAnalytics?.budget?.variance >= 0 ? 'text-red-600' : 'text-green-600'}`}>
+                {data.costAnalytics?.budget?.variance >= 0 ? '+' : ''}{formatCurrency(data.costAnalytics?.budget?.variance || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {data.costAnalytics?.budget?.variance >= 0 ? 'Over budget' : 'Under budget'}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Cost per Km</CardTitle>
+              <Icon icon="material-symbols:route" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(data.costAnalytics?.efficiency?.costPerKm || 0)}</div>
+              <p className="text-xs text-muted-foreground">Operating efficiency</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Labor Costs</CardTitle>
+              <Icon icon="material-symbols:engineering" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{formatCurrency(data.maintenance?.laborCost || 0)}</div>
+              <p className="text-xs text-muted-foreground">
+                {formatCurrency(data.costAnalytics?.efficiency?.maintenanceCostPerTruck || 0)} per truck
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts Section */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Cost Breakdown Pie Chart */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Cost Breakdown</CardTitle>
+              <CardDescription>Distribution of operating costs by category</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.charts?.costBreakdown && data.charts.costBreakdown.some(item => item.cost > 0) ? (
+                <ChartContainer config={{
+                  fuel: { label: "Fuel", color: "hsl(var(--chart-1))" },
+                  labor: { label: "Labor", color: "hsl(var(--chart-2))" },
+                  parts: { label: "Parts", color: "hsl(var(--chart-3))" },
+                  other: { label: "Other", color: "hsl(var(--chart-4))" }
+                }} className="mx-auto aspect-square max-h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={data.charts?.costBreakdown || []}
+                        cx="50%"
+                        cy="50%"
+                        labelLine={false}
+                        label={({ category, percentage }) => percentage > 0 ? `${category}: ${percentage}%` : ''}
+                        outerRadius={80}
+                        fill="#8884d8"
+                        dataKey="cost"
+                      >
+                        {(data.charts?.costBreakdown || []).map((entry, index) => {
+                          const colors = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8'];
+                          return (
+                            <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+                          );
+                        })}
+                      </Pie>
+                      <ChartTooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="rounded-lg border bg-background p-2 shadow-md">
+                                <div className="grid grid-cols-2 gap-2">
+                                  <div className="flex flex-col">
+                                    <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                      {data.category}
+                                    </span>
+                                    <span className="font-bold text-muted-foreground">
+                                      {formatCurrency(data.cost)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                  <div className="text-center">
+                    <Icon icon="material-symbols:pie-chart" className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No cost data available</p>
+                    <p className="text-xs">Cost breakdown will appear when data is available</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+
+        </div>
+
+      </div>
+
+      {/* Cost Efficiency Insights */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Icon icon="material-symbols:speed" className="h-5 w-5" />
+              <span>Operational Efficiency</span>
+            </CardTitle>
+            <CardDescription>Key efficiency metrics for fleet operations</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="text-center p-3 bg-blue-50 rounded-lg">
+                <div className="text-sm text-muted-foreground">Cost per Hour</div>
+                <div className="text-lg font-bold text-blue-600">
+                  {formatCurrency(data.costAnalytics?.efficiency?.costPerHour || 0)}
+                </div>
+              </div>
+              <div className="text-center p-3 bg-green-50 rounded-lg">
+                <div className="text-sm text-muted-foreground">Cost per Km</div>
+                <div className="text-lg font-bold text-green-600">
+                  {formatCurrency(data.costAnalytics?.efficiency?.costPerKm || 0)}
+                </div>
+              </div>
+            </div>
+            <div className="text-center p-3 bg-orange-50 rounded-lg">
+              <div className="text-sm text-muted-foreground">Maintenance Cost per Truck</div>
+              <div className="text-lg font-bold text-orange-600">
+                {formatCurrency(data.costAnalytics?.efficiency?.maintenanceCostPerTruck || 0)}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Icon icon="material-symbols:insights" className="h-5 w-5" />
+              <span>Cost Insights</span>
+            </CardTitle>
+            <CardDescription>Advanced analytics and operational recommendations</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {/* Dynamic insights based on data */}
+            {data.costAnalytics?.budget?.variance > 0 && (
+              <div className="flex items-start space-x-2 p-3 bg-red-50 rounded-lg">
+                <Icon icon="ph:warning-fill" className="w-5 h-5 text-red-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-red-700">Budget Alert</p>
+                  <p className="text-xs text-red-600">
+                    You're {formatCurrency(data.costAnalytics.budget.variance)} over budget this month.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {data.maintenanceAnalytics?.issueProneVehicles?.length > 0 && (
+              <div className="flex items-start space-x-2 p-3 bg-yellow-50 rounded-lg">
+                <Icon icon="material-symbols:maintenance" className="w-5 h-5 text-yellow-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-yellow-700">Maintenance Alert</p>
+                  <p className="text-xs text-yellow-600">
+                    {data.maintenanceAnalytics.issueProneVehicles.length} vehicle(s) need attention.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {data.fuel?.avgMPG < 10 && (
+              <div className="flex items-start space-x-2 p-3 bg-blue-50 rounded-lg">
+                <Icon icon="material-symbols:eco" className="w-5 h-5 text-blue-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-blue-700">Fuel Efficiency</p>
+                  <p className="text-xs text-blue-600">
+                    Consider fuel efficiency training for drivers.
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {data.costAnalytics?.budget?.variance <= 0 && (
+              <div className="flex items-start space-x-2 p-3 bg-green-50 rounded-lg">
+                <Icon icon="ph:check-circle-fill" className="w-5 h-5 text-green-500 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-green-700">Great Job!</p>
+                  <p className="text-xs text-green-600">
+                    You're within budget and maintaining efficient operations.
+                  </p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Fuel Forecasting Section */}
       <div className="space-y-4">
         <div className="flex items-center space-x-2">
@@ -753,6 +1389,434 @@ const Dashboard = () => {  const [data, setData] = useState({
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Vehicle Usage Analytics Section */}
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Icon icon="material-symbols:analytics" className="h-5 w-5 text-primary" />
+            <h3 className="text-xl font-semibold">Vehicle Usage Analytics</h3>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-muted-foreground">Usage Threshold:</span>
+            <Select value={usageThreshold} onValueChange={setUsageThreshold}>
+              <SelectTrigger className="w-32">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="medium">Medium</SelectItem>
+                <SelectItem value="high">High</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        {/* Usage Summary Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Average Usage Score</CardTitle>
+              <Icon icon="material-symbols:speed" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.usageAnalytics?.averageUsageScore || 0}/100</div>
+              <p className="text-xs text-muted-foreground">Fleet wide average</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">High Usage Vehicles</CardTitle>
+              <Icon icon="material-symbols:trending-up" className="h-4 w-4 text-green-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600">{data.usageAnalytics?.highUsageVehicles?.length || 0}</div>
+              <p className="text-xs text-muted-foreground">Above {thresholdConfigs[usageThreshold].high} score</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Low Usage Vehicles</CardTitle>
+              <Icon icon="material-symbols:trending-down" className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">{data.usageAnalytics?.lowUsageVehicles?.length || 0}</div>
+              <p className="text-xs text-muted-foreground">Below {thresholdConfigs[usageThreshold].low} score</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Active Drivers</CardTitle>
+              <Icon icon="material-symbols:person-play" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.usageAnalytics?.driverUsage?.length || 0}</div>
+              <p className="text-xs text-muted-foreground">With assigned vehicles</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Usage Tables */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* High Usage Vehicles */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Icon icon="material-symbols:trending-up" className="h-5 w-5 text-green-500" />
+                <span>High Usage Vehicles</span>
+              </CardTitle>
+              <CardDescription>Vehicles with high activity and utilization</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-80 overflow-y-auto">
+                {data.usageAnalytics?.highUsageVehicles?.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plate</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Score</TableHead>
+                        <TableHead>Mileage</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.usageAnalytics.highUsageVehicles.map((vehicle) => (
+                        <TableRow key={vehicle.id}>
+                          <TableCell className="font-medium">{vehicle.plateNumber}</TableCell>
+                          <TableCell>{vehicle.truckType}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-green-600">{vehicle.usageScore}</span>
+                              <Progress value={vehicle.usageScore} className="w-16 h-2" />
+                            </div>
+                          </TableCell>
+                          <TableCell>{vehicle.totalMileage.toLocaleString()}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Icon icon="material-symbols:trending-up" className="w-8 h-8 mr-2" />
+                    <span>No high usage vehicles</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Low Usage Vehicles */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Icon icon="material-symbols:trending-down" className="h-5 w-5 text-red-500" />
+                <span>Low Usage Vehicles</span>
+              </CardTitle>
+              <CardDescription>Vehicles with minimal activity requiring attention</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-80 overflow-y-auto">
+                {data.usageAnalytics?.lowUsageVehicles?.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plate</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Score</TableHead>
+                        <TableHead>Days Idle</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.usageAnalytics.lowUsageVehicles.map((vehicle) => (
+                        <TableRow key={vehicle.id}>
+                          <TableCell className="font-medium">{vehicle.plateNumber}</TableCell>
+                          <TableCell>{vehicle.truckType}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <span className="font-bold text-red-600">{vehicle.usageScore}</span>
+                              <Progress value={vehicle.usageScore} className="w-16 h-2" />
+                            </div>
+                          </TableCell>
+                          <TableCell>{vehicle.daysSinceLastActivity}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Icon icon="material-symbols:trending-down" className="w-8 h-8 mr-2" />
+                    <span>No low usage vehicles</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Driver Usage Analytics */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Icon icon="material-symbols:person-play" className="h-5 w-5" />
+              <span>Driver Usage Patterns</span>
+            </CardTitle>
+            <CardDescription>Activity levels and performance by driver</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="max-h-80 overflow-y-auto">
+              {data.usageAnalytics?.driverUsage?.length > 0 ? (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Driver</TableHead>
+                      <TableHead>Vehicles</TableHead>
+                      <TableHead>Avg Usage Score</TableHead>
+                      <TableHead>Performance</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.usageAnalytics.driverUsage.map((driver, index) => (
+                      <TableRow key={index}>
+                        <TableCell className="font-medium">{driver.driverName}</TableCell>
+                        <TableCell>{driver.vehicleCount}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <span className="font-bold">{driver.averageUsageScore}</span>
+                            <Progress value={driver.averageUsageScore} className="w-16 h-2" />
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {driver.averageUsageScore >= 70 ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-800">
+                              High
+                            </span>
+                          ) : driver.averageUsageScore >= 40 ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-yellow-100 text-yellow-800">
+                              Medium
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-red-100 text-red-800">
+                              Low
+                            </span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              ) : (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Icon icon="material-symbols:person" className="w-8 h-8 mr-2" />
+                  <span>No driver usage data available</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* MPG Analytics Section */}
+      <div className="space-y-6">
+        <div className="flex items-center space-x-2">
+          <Icon icon="material-symbols:eco" className="h-5 w-5 text-primary" />
+          <h3 className="text-xl font-semibold">MPG Performance Analytics</h3>
+        </div>
+
+        {/* MPG by Vehicle Type */}
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>MPG by Vehicle Type</CardTitle>
+              <CardDescription>Average fuel efficiency across different vehicle types</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.mpgAnalytics?.byVehicleType?.length > 0 ? (
+                <ChartContainer config={{
+                  avgMPG: { label: "Average MPG", color: "hsl(var(--chart-1))" }
+                }} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.mpgAnalytics.byVehicleType}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="type"
+                        tick={{ fontSize: 12 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12 }}
+                        label={{ value: 'MPG', angle: -90, position: 'insideLeft' }}
+                      />
+                      <ChartTooltip
+                        content={<ChartTooltipContent />}
+                        formatter={(value) => [value + " MPG", "Average MPG"]}
+                      />
+                      <Bar dataKey="avgMPG" fill="hsl(var(--chart-1))" radius={4} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                  <div className="text-center">
+                    <Icon icon="material-symbols:bar-chart" className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No MPG data available</p>
+                    <p className="text-xs">MPG data will appear when fuel records are available</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>MPG Trends Over Time</CardTitle>
+              <CardDescription>Historical fuel efficiency trends by vehicle type</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.mpgAnalytics?.trends?.length > 0 ? (
+                <ChartContainer config={{
+                  mpg: { label: "MPG", color: "hsl(var(--chart-2))" }
+                }} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={data.mpgAnalytics.trends}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="month"
+                        tick={{ fontSize: 12 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={60}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12 }}
+                        label={{ value: 'MPG', angle: -90, position: 'insideLeft' }}
+                      />
+                      <ChartTooltip
+                        content={<ChartTooltipContent />}
+                        formatter={(value) => [value + " MPG", "Average MPG"]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="avgMPG"
+                        stroke="hsl(var(--chart-2))"
+                        strokeWidth={2}
+                        dot={{ fill: "hsl(var(--chart-2))" }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                  <div className="text-center">
+                    <Icon icon="material-symbols:show-chart" className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No trend data available</p>
+                    <p className="text-xs">Trends will appear with historical fuel data</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Top and Poor Performers */}
+        <div className="grid gap-6 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Icon icon="material-symbols:star" className="h-5 w-5 text-yellow-500" />
+                <span>Top MPG Performers</span>
+              </CardTitle>
+              <CardDescription>Vehicles with the best fuel efficiency</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-60 overflow-y-auto">
+                {data.mpgAnalytics?.topPerformers?.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plate Number</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Avg MPG</TableHead>
+                        <TableHead>Readings</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.mpgAnalytics.topPerformers.map((vehicle) => (
+                        <TableRow key={vehicle.truckId}>
+                          <TableCell className="font-medium">{vehicle.plateNumber}</TableCell>
+                          <TableCell>{vehicle.truckType}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Icon icon="material-symbols:eco" className="w-4 h-4 text-green-500" />
+                              <span className="font-bold text-green-600">{vehicle.avgMPG}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{vehicle.count}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Icon icon="material-symbols:star" className="w-8 h-8 mr-2" />
+                    <span>No performance data available</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Icon icon="material-symbols:priority-high" className="h-5 w-5 text-red-500" />
+                <span>Poor MPG Performers</span>
+              </CardTitle>
+              <CardDescription>Vehicles requiring efficiency attention</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-60 overflow-y-auto">
+                {data.mpgAnalytics?.poorPerformers?.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plate Number</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead>Avg MPG</TableHead>
+                        <TableHead>Readings</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.mpgAnalytics.poorPerformers.map((vehicle) => (
+                        <TableRow key={vehicle.truckId}>
+                          <TableCell className="font-medium">{vehicle.plateNumber}</TableCell>
+                          <TableCell>{vehicle.truckType}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <Icon icon="material-symbols:warning" className="w-4 h-4 text-red-500" />
+                              <span className="font-bold text-red-600">{vehicle.avgMPG}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{vehicle.count}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Icon icon="material-symbols:priority-high" className="w-8 h-8 mr-2" />
+                    <span>No poor performers identified</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
 
       {/* Fuel Logs Section - Moved to bottom */}
