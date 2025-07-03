@@ -1701,7 +1701,7 @@ const Dashboard = () => {  const [data, setData] = useState({
                 <div>
                   <p className="text-sm font-medium text-red-700">Budget Alert</p>
                   <p className="text-xs text-red-600">
-                    You're {formatCurrency(data.costAnalytics.budget.variance)} over budget this month.
+                    You&apos;re {formatCurrency(data.costAnalytics.budget.variance)} over budget this month.
                   </p>
                 </div>
               </div>
@@ -1737,7 +1737,7 @@ const Dashboard = () => {  const [data, setData] = useState({
                 <div>
                   <p className="text-sm font-medium text-green-700">Great Job!</p>
                   <p className="text-xs text-green-600">
-                    You're within budget and maintaining efficient operations.
+                    You&apos;re within budget and maintaining efficient operations.
                   </p>
                 </div>
               </div>
