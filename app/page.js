@@ -1140,8 +1140,8 @@ const Dashboard = () => {  const [data, setData] = useState({
           late: dummyTrips.filter(trip => trip.deliveryStatus === "late").length
         };
 
-        const onTimeDeliveryRate = completedTrips > 0 
-          ? Math.round(((deliveryPerformance.onTime + deliveryPerformance.early) / completedTrips) * 100) 
+        const onTimeDeliveryRate = completedTrips > 0
+          ? Math.round(((deliveryPerformance.onTime + deliveryPerformance.early) / completedTrips) * 100)
           : 0;
 
         // Trips by driver
@@ -2913,10 +2913,10 @@ const Dashboard = () => {  const [data, setData] = useState({
                       </TableCell>
                       <TableCell>
                         <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                          trip.status === 'completed' 
-                            ? 'bg-green-100 text-green-800' 
-                            : trip.status === 'ongoing' 
-                            ? 'bg-blue-100 text-blue-800' 
+                          trip.status === 'completed'
+                            ? 'bg-green-100 text-green-800'
+                            : trip.status === 'ongoing'
+                            ? 'bg-blue-100 text-blue-800'
                             : 'bg-yellow-100 text-yellow-800'
                         }`}>
                           {trip.status}
@@ -2929,10 +2929,10 @@ const Dashboard = () => {  const [data, setData] = useState({
                           <div className="space-y-1">
                             <div className="text-xs">Actual: {format(new Date(trip.actualDelivery), 'HH:mm')}</div>
                             <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${
-                              trip.deliveryStatus === 'early' 
-                                ? 'bg-green-100 text-green-700' 
-                                : trip.deliveryStatus === 'on_time' 
-                                ? 'bg-blue-100 text-blue-700' 
+                              trip.deliveryStatus === 'early'
+                                ? 'bg-green-100 text-green-700'
+                                : trip.deliveryStatus === 'on_time'
+                                ? 'bg-blue-100 text-blue-700'
                                 : 'bg-red-100 text-red-700'
                             }`}>
                               {trip.deliveryStatus === 'on_time' ? 'On Time' : trip.deliveryStatus}
