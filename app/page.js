@@ -82,6 +82,37 @@ const Dashboard = () => {  const [data, setData] = useState({
       trends: [],
       topPerformers: [],
       poorPerformers: []
+    },
+    retirementAnalytics: {
+      upcomingRetirements: [],
+      upgradeCandidates: [],
+      retirementTimeline: [],
+      costProjections: {
+        replacementCosts: [],
+        savingsOpportunities: []
+      },
+      ageDistribution: [],
+      maintenanceVsAge: [],
+      recommendations: []
+    },
+    tripAnalytics: {
+      totalTrips: 0,
+      completedTrips: 0,
+      ongoingTrips: 0,
+      totalDistance: 0,
+      totalDuration: 0,
+      avgTripDuration: 0,
+      avgDistance: 0,
+      onTimeDeliveryRate: 0,
+      recentTrips: [],
+      tripsByDriver: [],
+      tripsByVehicle: [],
+      distanceByVehicleType: [],
+      deliveryPerformance: {
+        onTime: 0,
+        early: 0,
+        late: 0
+      }
     }
   });
 
@@ -715,9 +746,484 @@ const Dashboard = () => {  const [data, setData] = useState({
       const usageAnalytics = calculateUsageAnalytics();
       const mpgAnalytics = calculateMPGAnalytics();
 
+      // Calculate Vehicle Retirement Analytics
+      const calculateRetirementAnalytics = () => {
+        const currentYear = new Date().getFullYear();
+
+        // Calculate age for each truck and retirement projections
+        const vehicleRetirementData = trucks.map(truck => {
+          const purchaseYear = truck.truck_date ? new Date(truck.truck_date).getFullYear() : currentYear - 5; // Default to 5 years old if no date
+          const vehicleAge = currentYear - purchaseYear;
+
+          // Get maintenance history for this truck
+          const truckMaintenanceRecords = maintenanceRecords.filter(m => m.truck === truck.id);
+          const totalMaintenanceCost = truckMaintenanceRecords.reduce((sum, record) => sum + (record.cost || 0), 0);
+          const maintenanceFrequency = truckMaintenanceRecords.length;
+
+          // Get fuel efficiency data
+          const truckFuelRecords = fuelRecords.filter(f => f.truck_id === truck.id);
+          let avgMPG = 0;
+          let fuelEfficiencyScore = 50; // Default score
+
+          if (truckFuelRecords.length > 1) {
+            // Calculate MPG based on fuel records
+            const mpgReadings = [];
+            truckFuelRecords.forEach((record, index) => {
+              if (index > 0 && record.odometer_reading && truckFuelRecords[index - 1].odometer_reading) {
+                const milesDriven = record.odometer_reading - truckFuelRecords[index - 1].odometer_reading;
+                if (milesDriven > 0 && milesDriven < 1000 && record.fuel_amount > 0) {
+                  const mpg = milesDriven / record.fuel_amount;
+                  if (mpg > 0 && mpg < 50) mpgReadings.push(mpg);
+                }
+              }
+            });
+
+            if (mpgReadings.length > 0) {
+              avgMPG = mpgReadings.reduce((sum, mpg) => sum + mpg, 0) / mpgReadings.length;
+              // Score based on MPG performance (higher is better)
+              fuelEfficiencyScore = Math.min(Math.max((avgMPG / 20) * 100, 0), 100);
+            }
+          }
+
+          // Calculate retirement score (0-100, lower = should retire sooner)
+          const ageScore = Math.max(100 - (vehicleAge * 10), 0); // Decreases by 10 per year
+          const maintenanceScore = Math.max(100 - (maintenanceFrequency * 5), 0); // Decreases by 5 per maintenance
+          const costScore = Math.max(100 - (totalMaintenanceCost / 1000), 0); // Decreases based on cost
+
+          const retirementScore = Math.round((ageScore + maintenanceScore + fuelEfficiencyScore + costScore) / 4);
+
+          // Estimate years until retirement (based on industry standards)
+          const standardRetirementAge = truck.truck_type?.toLowerCase().includes('heavy') ? 15 : 12;
+          const yearsUntilRetirement = Math.max(standardRetirementAge - vehicleAge, 0);
+
+          // Estimated replacement cost based on truck type
+          const getReplacementCost = (truckType) => {
+            const type = (truckType || '').toLowerCase();
+            if (type.includes('heavy') || type.includes('large')) return 150000;
+            if (type.includes('medium')) return 80000;
+            if (type.includes('light') || type.includes('small')) return 50000;
+            return 80000; // Default
+          };
+
+          const estimatedReplacementCost = getReplacementCost(truck.truck_type);
+
+          return {
+            id: truck.id,
+            plateNumber: truck.plate_number,
+            truckType: truck.truck_type || 'Unknown',
+            manufacturer: truck.truck_manufacturer || 'Unknown',
+            model: truck.truck_model || 'Unknown',
+            purchaseYear,
+            vehicleAge,
+            retirementScore,
+            yearsUntilRetirement,
+            estimatedReplacementCost,
+            totalMaintenanceCost,
+            maintenanceFrequency,
+            avgMPG: Math.round(avgMPG * 10) / 10,
+            fuelEfficiencyScore: Math.round(fuelEfficiencyScore),
+            isAssigned: !!truck.users_id,
+            recentMaintenanceCost: truckMaintenanceRecords
+              .filter(r => r.completion_date && new Date(r.completion_date) > new Date(Date.now() - 365 * 24 * 60 * 60 * 1000))
+              .reduce((sum, record) => sum + (record.cost || 0), 0)
+          };
+        });
+
+        // Sort by retirement urgency (lowest score first)
+        vehicleRetirementData.sort((a, b) => a.retirementScore - b.retirementScore);
+
+        // Upcoming retirements (next 3 years)
+        const upcomingRetirements = vehicleRetirementData.filter(v => v.yearsUntilRetirement <= 3);
+
+        // Upgrade candidates (poor performance but not necessarily old)
+        const upgradeCandidates = vehicleRetirementData.filter(v =>
+          v.retirementScore < 40 ||
+          (v.maintenanceFrequency > 5 && v.recentMaintenanceCost > 20000) ||
+          v.fuelEfficiencyScore < 30
+        );
+
+        // Create retirement timeline for next 10 years
+        const retirementTimeline = [];
+        for (let year = 0; year <= 10; year++) {
+          const yearData = {
+            year: currentYear + year,
+            vehiclesToRetire: vehicleRetirementData.filter(v => v.yearsUntilRetirement === year),
+            totalReplacementCost: 0,
+            count: 0
+          };
+
+          yearData.count = yearData.vehiclesToRetire.length;
+          yearData.totalReplacementCost = yearData.vehiclesToRetire.reduce(
+            (sum, v) => sum + v.estimatedReplacementCost, 0
+          );
+
+          if (yearData.count > 0) {
+            retirementTimeline.push(yearData);
+          }
+        }
+
+        // Age distribution for charts
+        const ageGroups = {
+          'New (0-2 years)': 0,
+          'Young (3-5 years)': 0,
+          'Mature (6-8 years)': 0,
+          'Aging (9-12 years)': 0,
+          'Old (13+ years)': 0
+        };
+
+        vehicleRetirementData.forEach(vehicle => {
+          if (vehicle.vehicleAge <= 2) ageGroups['New (0-2 years)']++;
+          else if (vehicle.vehicleAge <= 5) ageGroups['Young (3-5 years)']++;
+          else if (vehicle.vehicleAge <= 8) ageGroups['Mature (6-8 years)']++;
+          else if (vehicle.vehicleAge <= 12) ageGroups['Aging (9-12 years)']++;
+          else ageGroups['Old (13+ years)']++;
+        });
+
+        const ageDistribution = Object.entries(ageGroups).map(([ageGroup, count]) => ({
+          ageGroup,
+          count,
+          percentage: trucks.length > 0 ? Math.round((count / trucks.length) * 100) : 0
+        }));
+
+        // Maintenance cost vs age correlation
+        const maintenanceVsAge = vehicleRetirementData.map(vehicle => ({
+          vehicleAge: vehicle.vehicleAge,
+          maintenanceCost: vehicle.totalMaintenanceCost,
+          plateNumber: vehicle.plateNumber,
+          retirementScore: vehicle.retirementScore
+        }));
+
+        // Generate recommendations
+        const recommendations = [];
+
+        if (upcomingRetirements.length > 0) {
+          recommendations.push({
+            type: 'urgent',
+            title: 'Immediate Retirement Planning Required',
+            description: `${upcomingRetirements.length} vehicle(s) should be retired within the next 3 years.`,
+            action: 'Start budgeting for replacements and consider phased retirement.',
+            vehicles: upcomingRetirements.slice(0, 3).map(v => v.plateNumber),
+            priority: 'high'
+          });
+        }
+
+        if (upgradeCandidates.length > 0) {
+          recommendations.push({
+            type: 'upgrade',
+            title: 'Consider Early Replacement',
+            description: `${upgradeCandidates.length} vehicle(s) showing poor performance metrics.`,
+            action: 'Evaluate cost-benefit of early replacement vs continued maintenance.',
+            vehicles: upgradeCandidates.slice(0, 3).map(v => v.plateNumber),
+            priority: 'medium'
+          });
+        }
+
+        const oldVehicles = vehicleRetirementData.filter(v => v.vehicleAge > 10);
+        if (oldVehicles.length > 0) {
+          recommendations.push({
+            type: 'aging_fleet',
+            title: 'Aging Fleet Detected',
+            description: `${oldVehicles.length} vehicle(s) are over 10 years old.`,
+            action: 'Monitor closely for increased maintenance costs and plan replacements.',
+            vehicles: oldVehicles.slice(0, 3).map(v => v.plateNumber),
+            priority: 'medium'
+          });
+        }
+
+        const totalReplacementCostNext5Years = retirementTimeline
+          .filter(item => item.year <= currentYear + 5)
+          .reduce((sum, item) => sum + item.totalReplacementCost, 0);
+
+        if (totalReplacementCostNext5Years > 500000) {
+          recommendations.push({
+            type: 'budget',
+            title: 'Significant Capital Investment Required',
+            description: `Estimated ${formatCurrency(totalReplacementCostNext5Years)} needed for replacements in next 5 years.`,
+            action: 'Develop long-term capital budget and consider financing options.',
+            vehicles: [],
+            priority: 'high'
+          });
+        }
+
+        // Cost projections and savings opportunities
+        const replacementCosts = retirementTimeline.slice(0, 5).map(item => ({
+          year: item.year,
+          cost: item.totalReplacementCost,
+          vehicleCount: item.count
+        }));
+
+        const savingsOpportunities = upgradeCandidates.slice(0, 5).map(vehicle => ({
+          plateNumber: vehicle.plateNumber,
+          currentAnnualCost: vehicle.recentMaintenanceCost + (vehicle.avgMPG > 0 ? 50000 / vehicle.avgMPG * 3.5 : 25000), // Rough fuel cost estimate
+          projectedNewVehicleCost: vehicle.estimatedReplacementCost / 10, // Amortized over 10 years
+          potentialAnnualSavings: Math.max(vehicle.recentMaintenanceCost - (vehicle.estimatedReplacementCost / 10), 0)
+        }));
+
+        return {
+          upcomingRetirements: upcomingRetirements.slice(0, 10),
+          upgradeCandidates: upgradeCandidates.slice(0, 10),
+          retirementTimeline,
+          costProjections: {
+            replacementCosts,
+            savingsOpportunities: savingsOpportunities.filter(s => s.potentialAnnualSavings > 0)
+          },
+          ageDistribution,
+          maintenanceVsAge,
+          recommendations,
+          summary: {
+            totalVehicles: trucks.length,
+            averageAge: vehicleRetirementData.length > 0 ?
+              Math.round(vehicleRetirementData.reduce((sum, v) => sum + v.vehicleAge, 0) / vehicleRetirementData.length) : 0,
+            vehiclesNeedingAttention: upcomingRetirements.length + upgradeCandidates.length,
+            totalProjectedCost5Years: totalReplacementCostNext5Years
+          }
+        };
+      };
+
+      const retirementAnalytics = calculateRetirementAnalytics();
+
+      // Calculate Trip Analytics with dummy data
+      const calculateTripAnalytics = () => {
+        // Generate dummy trip data since the database schema doesn't support trips yet
+        // Using realistic locations around General Santos City, Philippines
+        const dummyTrips = [
+          {
+            id: "trip_001",
+            origin: "General Santos City",
+            destination: "Koronadal City",
+            distance: 45,
+            duration: 90, // minutes
+            status: "completed",
+            driverId: trucks[0]?.users_id || "driver_001",
+            vehicleId: trucks[0]?.id || "truck_001",
+            plateNumber: trucks[0]?.plate_number || "ABC-123",
+            driverName: "Juan dela Cruz",
+            startTime: "2025-07-03T08:00:00+08:00",
+            endTime: "2025-07-03T09:30:00+08:00",
+            scheduledDelivery: "2025-07-03T10:00:00+08:00",
+            actualDelivery: "2025-07-03T09:45:00+08:00",
+            deliveryStatus: "early"
+          },
+          {
+            id: "trip_002",
+            origin: "General Santos City",
+            destination: "Davao City",
+            distance: 150,
+            duration: 180,
+            status: "completed",
+            driverId: trucks[1]?.users_id || "driver_002",
+            vehicleId: trucks[1]?.id || "truck_002",
+            plateNumber: trucks[1]?.plate_number || "DEF-456",
+            driverName: "Maria Santos",
+            startTime: "2025-07-03T06:00:00+08:00",
+            endTime: "2025-07-03T09:00:00+08:00",
+            scheduledDelivery: "2025-07-03T09:30:00+08:00",
+            actualDelivery: "2025-07-03T09:45:00+08:00",
+            deliveryStatus: "late"
+          },
+          {
+            id: "trip_003",
+            origin: "General Santos City",
+            destination: "Tacurong City",
+            distance: 65,
+            duration: 120,
+            status: "ongoing",
+            driverId: trucks[2]?.users_id || "driver_003",
+            vehicleId: trucks[2]?.id || "truck_003",
+            plateNumber: trucks[2]?.plate_number || "GHI-789",
+            driverName: "Roberto Mercado",
+            startTime: "2025-07-03T07:30:00+08:00",
+            endTime: null,
+            scheduledDelivery: "2025-07-03T11:00:00+08:00",
+            actualDelivery: null,
+            deliveryStatus: "pending"
+          },
+          {
+            id: "trip_004",
+            origin: "General Santos City",
+            destination: "Kidapawan City",
+            distance: 95,
+            duration: 150,
+            status: "completed",
+            driverId: trucks[3]?.users_id || "driver_004",
+            vehicleId: trucks[3]?.id || "truck_004",
+            plateNumber: trucks[3]?.plate_number || "JKL-012",
+            driverName: "Ana Reyes",
+            startTime: "2025-07-02T06:00:00+08:00",
+            endTime: "2025-07-02T08:30:00+08:00",
+            scheduledDelivery: "2025-07-02T09:00:00+08:00",
+            actualDelivery: "2025-07-02T08:55:00+08:00",
+            deliveryStatus: "on_time"
+          },
+          {
+            id: "trip_005",
+            origin: "General Santos City",
+            destination: "Marbel (Koronadal)",
+            distance: 48,
+            duration: 95,
+            status: "completed",
+            driverId: trucks[0]?.users_id || "driver_001",
+            vehicleId: trucks[0]?.id || "truck_001",
+            plateNumber: trucks[0]?.plate_number || "ABC-123",
+            driverName: "Juan dela Cruz",
+            startTime: "2025-07-01T14:00:00+08:00",
+            endTime: "2025-07-01T15:35:00+08:00",
+            scheduledDelivery: "2025-07-01T16:00:00+08:00",
+            actualDelivery: "2025-07-01T15:50:00+08:00",
+            deliveryStatus: "early"
+          },
+          {
+            id: "trip_006",
+            origin: "General Santos City",
+            destination: "Cotabato City",
+            distance: 120,
+            duration: 165,
+            status: "completed",
+            driverId: trucks[1]?.users_id || "driver_002",
+            vehicleId: trucks[1]?.id || "truck_002",
+            plateNumber: trucks[1]?.plate_number || "DEF-456",
+            driverName: "Maria Santos",
+            startTime: "2025-06-30T05:30:00+08:00",
+            endTime: "2025-06-30T08:15:00+08:00",
+            scheduledDelivery: "2025-06-30T08:30:00+08:00",
+            actualDelivery: "2025-06-30T08:25:00+08:00",
+            deliveryStatus: "on_time"
+          },
+          {
+            id: "trip_007",
+            origin: "General Santos City",
+            destination: "Polomolok",
+            distance: 25,
+            duration: 45,
+            status: "completed",
+            driverId: trucks[2]?.users_id || "driver_003",
+            vehicleId: trucks[2]?.id || "truck_003",
+            plateNumber: trucks[2]?.plate_number || "GHI-789",
+            driverName: "Roberto Mercado",
+            startTime: "2025-06-29T13:00:00+08:00",
+            endTime: "2025-06-29T13:45:00+08:00",
+            scheduledDelivery: "2025-06-29T14:00:00+08:00",
+            actualDelivery: "2025-06-29T13:50:00+08:00",
+            deliveryStatus: "early"
+          },
+          {
+            id: "trip_008",
+            origin: "General Santos City",
+            destination: "Tupi",
+            distance: 35,
+            duration: 60,
+            status: "completed",
+            driverId: trucks[3]?.users_id || "driver_004",
+            vehicleId: trucks[3]?.id || "truck_004",
+            plateNumber: trucks[3]?.plate_number || "JKL-012",
+            driverName: "Ana Reyes",
+            startTime: "2025-06-28T10:00:00+08:00",
+            endTime: "2025-06-28T11:00:00+08:00",
+            scheduledDelivery: "2025-06-28T11:15:00+08:00",
+            actualDelivery: "2025-06-28T11:30:00+08:00",
+            deliveryStatus: "late"
+          }
+        ];
+
+        const totalTrips = dummyTrips.length;
+        const completedTrips = dummyTrips.filter(trip => trip.status === "completed").length;
+        const ongoingTrips = dummyTrips.filter(trip => trip.status === "ongoing").length;
+        const totalDistance = dummyTrips.reduce((sum, trip) => sum + trip.distance, 0);
+        const totalDuration = dummyTrips.filter(trip => trip.duration).reduce((sum, trip) => sum + trip.duration, 0);
+        const avgTripDuration = completedTrips > 0 ? Math.round(totalDuration / completedTrips) : 0;
+        const avgDistance = totalTrips > 0 ? Math.round(totalDistance / totalTrips) : 0;
+
+        // Calculate delivery performance
+        const deliveryPerformance = {
+          onTime: dummyTrips.filter(trip => trip.deliveryStatus === "on_time").length,
+          early: dummyTrips.filter(trip => trip.deliveryStatus === "early").length,
+          late: dummyTrips.filter(trip => trip.deliveryStatus === "late").length
+        };
+
+        const onTimeDeliveryRate = completedTrips > 0 
+          ? Math.round(((deliveryPerformance.onTime + deliveryPerformance.early) / completedTrips) * 100) 
+          : 0;
+
+        // Trips by driver
+        const tripsByDriver = {};
+        dummyTrips.forEach(trip => {
+          if (!tripsByDriver[trip.driverName]) {
+            tripsByDriver[trip.driverName] = {
+              driverName: trip.driverName,
+              totalTrips: 0,
+              completedTrips: 0,
+              totalDistance: 0,
+              avgDistance: 0,
+              onTimeRate: 0
+            };
+          }
+          tripsByDriver[trip.driverName].totalTrips++;
+          if (trip.status === "completed") {
+            tripsByDriver[trip.driverName].completedTrips++;
+          }
+          tripsByDriver[trip.driverName].totalDistance += trip.distance;
+        });
+
+        // Calculate driver averages and performance
+        Object.values(tripsByDriver).forEach(driver => {
+          driver.avgDistance = Math.round(driver.totalDistance / driver.totalTrips);
+          const driverTrips = dummyTrips.filter(trip => trip.driverName === driver.driverName && trip.status === "completed");
+          const onTimeTrips = driverTrips.filter(trip => ["on_time", "early"].includes(trip.deliveryStatus));
+          driver.onTimeRate = driverTrips.length > 0 ? Math.round((onTimeTrips.length / driverTrips.length) * 100) : 0;
+        });
+
+        // Trips by vehicle
+        const tripsByVehicle = {};
+        dummyTrips.forEach(trip => {
+          if (!tripsByVehicle[trip.plateNumber]) {
+            tripsByVehicle[trip.plateNumber] = {
+              plateNumber: trip.plateNumber,
+              vehicleId: trip.vehicleId,
+              totalTrips: 0,
+              totalDistance: 0,
+              avgDistance: 0,
+              utilization: 0
+            };
+          }
+          tripsByVehicle[trip.plateNumber].totalTrips++;
+          tripsByVehicle[trip.plateNumber].totalDistance += trip.distance;
+        });
+
+        Object.values(tripsByVehicle).forEach(vehicle => {
+          vehicle.avgDistance = Math.round(vehicle.totalDistance / vehicle.totalTrips);
+          vehicle.utilization = Math.min(Math.round((vehicle.totalTrips / 30) * 100), 100); // Assuming 30-day period
+        });
+
+        // Distance by vehicle type
+        const distanceByVehicleType = [
+          { vehicleType: "Light Truck", totalDistance: 2500, avgDistance: 85, tripCount: 29 },
+          { vehicleType: "Medium Truck", totalDistance: 3200, avgDistance: 106, tripCount: 30 },
+          { vehicleType: "Heavy Truck", totalDistance: 4100, avgDistance: 136, tripCount: 30 }
+        ];
+
+        return {
+          totalTrips,
+          completedTrips,
+          ongoingTrips,
+          totalDistance,
+          totalDuration,
+          avgTripDuration,
+          avgDistance,
+          onTimeDeliveryRate,
+          recentTrips: dummyTrips.sort((a, b) => new Date(b.startTime) - new Date(a.startTime)), // Show all trips sorted by most recent
+          tripsByDriver: Object.values(tripsByDriver),
+          tripsByVehicle: Object.values(tripsByVehicle),
+          distanceByVehicleType,
+          deliveryPerformance
+        };
+      };
+
+      const tripAnalytics = calculateTripAnalytics();
+
       // Debug analytics
       console.log('Usage Analytics Debug:', usageAnalytics);
       console.log('MPG Analytics Debug:', mpgAnalytics);
+      console.log('Trip Analytics Debug:', tripAnalytics);
 
       setData({
         fleet: {
@@ -757,7 +1263,9 @@ const Dashboard = () => {  const [data, setData] = useState({
           issueProneVehicles,
         },
         usageAnalytics: usageAnalytics,
-        mpgAnalytics: mpgAnalytics
+        mpgAnalytics: mpgAnalytics,
+        retirementAnalytics: retirementAnalytics,
+        tripAnalytics: tripAnalytics
       });
 
       setLastUpdated(new Date());
@@ -1813,6 +2321,688 @@ const Dashboard = () => {  const [data, setData] = useState({
                     <span>No poor performers identified</span>
                   </div>
                 )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Vehicle Retirement & Upgrade Analytics Section */}
+      <div className="space-y-6">
+        <div className="flex items-center space-x-2">
+          <Icon icon="material-symbols:schedule" className="h-5 w-5 text-primary" />
+          <h3 className="text-xl font-semibold">Vehicle Retirement & Upgrade Projections</h3>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid gap-4 md:grid-cols-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Fleet Average Age</CardTitle>
+              <Icon icon="material-symbols:calendar-today" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.retirementAnalytics?.summary?.averageAge || 0} years</div>
+              <p className="text-xs text-muted-foreground">{data.retirementAnalytics?.summary?.totalVehicles || 0} total vehicles</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Attention Required</CardTitle>
+              <Icon icon="material-symbols:warning" className="h-4 w-4 text-orange-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-orange-600">
+                {data.retirementAnalytics?.summary?.vehiclesNeedingAttention || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">Vehicles needing review</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Upcoming Retirements</CardTitle>
+              <Icon icon="material-symbols:event-upcoming" className="h-4 w-4 text-red-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-red-600">
+                {data.retirementAnalytics?.upcomingRetirements?.length || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">Next 3 years</p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">5-Year Budget</CardTitle>
+              <Icon icon="material-symbols:payments" className="h-4 w-4 text-blue-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {formatCurrency(data.retirementAnalytics?.summary?.totalProjectedCost5Years || 0)}
+              </div>
+              <p className="text-xs text-muted-foreground">Projected replacements</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Charts Section */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Fleet Age Distribution */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Fleet Age Distribution</CardTitle>
+              <CardDescription>Current age breakdown of the vehicle fleet</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.retirementAnalytics?.ageDistribution?.length > 0 ? (
+                <ChartContainer config={{
+                  count: { label: "Vehicle Count", color: "hsl(var(--chart-1))" }
+                }} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.retirementAnalytics.ageDistribution}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="ageGroup"
+                        tick={{ fontSize: 11 }}
+                        angle={-45}
+                        textAnchor="end"
+                        height={80}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 12 }}
+                        label={{ value: 'Vehicle Count', angle: -90, position: 'insideLeft' }}
+                      />
+                      <ChartTooltip
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            const data = payload[0].payload;
+                            return (
+                              <div className="rounded-lg border bg-background p-2 shadow-md">
+                                <div className="grid gap-1">
+                                  <span className="text-sm font-semibold">{data.ageGroup}</span>
+                                  <span className="text-sm">{data.count} vehicles ({data.percentage}%)</span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={4} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                  <div className="text-center">
+                    <Icon icon="material-symbols:bar-chart" className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No age distribution data available</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Retirement Timeline */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Retirement Timeline</CardTitle>
+              <CardDescription>Projected vehicle retirements and replacement costs over time</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {data.retirementAnalytics?.retirementTimeline?.length > 0 ? (
+                <ChartContainer config={{
+                  cost: { label: "Replacement Cost", color: "hsl(var(--chart-2))" },
+                  count: { label: "Vehicle Count", color: "hsl(var(--chart-3))" }
+                }} className="h-[300px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <ComposedChart data={data.retirementAnalytics.retirementTimeline}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis
+                        dataKey="year"
+                        tick={{ fontSize: 12 }}
+                      />
+                      <YAxis
+                        yAxisId="cost"
+                        orientation="left"
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(value) => `₱${(value / 1000000).toFixed(1)}M`}
+                      />
+                      <YAxis
+                        yAxisId="count"
+                        orientation="right"
+                        tick={{ fontSize: 10 }}
+                      />
+                      <ChartTooltip
+                        content={({ active, payload, label }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="rounded-lg border bg-background p-3 shadow-md">
+                                <div className="grid gap-1">
+                                  <span className="text-sm font-semibold">Year {label}</span>
+                                  <span className="text-sm">
+                                    {payload.find(p => p.dataKey === 'count')?.value || 0} vehicles to retire
+                                  </span>
+                                  <span className="text-sm">
+                                    Cost: {formatCurrency(payload.find(p => p.dataKey === 'totalReplacementCost')?.value || 0)}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Bar
+                        yAxisId="cost"
+                        dataKey="totalReplacementCost"
+                        fill="hsl(var(--chart-2))"
+                        radius={4}
+                        name="Replacement Cost"
+                      />
+                      <Line
+                        yAxisId="count"
+                        type="monotone"
+                        dataKey="count"
+                        stroke="hsl(var(--chart-3))"
+                        strokeWidth={3}
+                        dot={{ fill: "hsl(var(--chart-3))", r: 4 }}
+                        name="Vehicle Count"
+                      />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </ChartContainer>
+              ) : (
+                <div className="flex items-center justify-center h-[300px] text-muted-foreground">
+                  <div className="text-center">
+                    <Icon icon="material-symbols:timeline" className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm">No retirement timeline data available</p>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Maintenance Cost vs Age Scatter Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Maintenance Cost vs Vehicle Age</CardTitle>
+            <CardDescription>Correlation between vehicle age and maintenance expenses</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {data.retirementAnalytics?.maintenanceVsAge?.length > 0 ? (
+              <ChartContainer config={{
+                maintenanceCost: { label: "Maintenance Cost", color: "hsl(var(--chart-4))" }
+              }} className="h-[400px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data.retirementAnalytics.maintenanceVsAge}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="vehicleAge"
+                      tick={{ fontSize: 12 }}
+                      label={{ value: 'Vehicle Age (Years)', position: 'insideBottom', offset: -10 }}
+                    />
+                    <YAxis
+                      tick={{ fontSize: 12 }}
+                      tickFormatter={(value) => `₱${(value / 1000).toFixed(0)}K`}
+                      label={{ value: 'Maintenance Cost', angle: -90, position: 'insideLeft' }}
+                    />
+                    <ChartTooltip
+                      content={({ active, payload, label }) => {
+                        if (active && payload && payload.length) {
+                          const data = payload[0].payload;
+                          return (
+                            <div className="rounded-lg border bg-background p-3 shadow-md">
+                              <div className="grid gap-1">
+                                <span className="text-sm font-semibold">{data.plateNumber}</span>
+                                <span className="text-sm">Age: {label} years</span>
+                                <span className="text-sm">
+                                  Maintenance: {formatCurrency(data.maintenanceCost)}
+                                </span>
+                                <span className="text-sm">
+                                  Retirement Score: {data.retirementScore}/100
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }}
+                    />
+                    <Line
+                      type="monotone"
+                      dataKey="maintenanceCost"
+                      stroke="hsl(var(--chart-4))"
+                      strokeWidth={2}
+                      dot={{ fill: "hsl(var(--chart-4))", r: 3 }}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            ) : (
+              <div className="flex items-center justify-center h-[400px] text-muted-foreground">
+                <div className="text-center">
+                  <Icon icon="material-symbols:scatter-plot" className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No maintenance vs age data available</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Tables Section */}
+        <div className="grid gap-6 md:grid-cols-2">
+          {/* Upcoming Retirements */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Icon icon="material-symbols:event-upcoming" className="h-5 w-5 text-red-500" />
+                <span>Upcoming Retirements</span>
+              </CardTitle>
+              <CardDescription>Vehicles requiring retirement within 3 years</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-80 overflow-y-auto">
+                {data.retirementAnalytics?.upcomingRetirements?.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plate</TableHead>
+                        <TableHead>Age</TableHead>
+                        <TableHead>Years Left</TableHead>
+                        <TableHead>Score</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.retirementAnalytics.upcomingRetirements.map((vehicle) => (
+                        <TableRow key={vehicle.id}>
+                          <TableCell className="font-medium">{vehicle.plateNumber}</TableCell>
+                          <TableCell>{vehicle.vehicleAge} yrs</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                              vehicle.yearsUntilRetirement <= 1
+                                ? 'bg-red-100 text-red-800'
+                                : vehicle.yearsUntilRetirement <= 2
+                                ? 'bg-orange-100 text-orange-800'
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}>
+                              {vehicle.yearsUntilRetirement} years
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <span className={`font-bold ${
+                                vehicle.retirementScore < 30 ? 'text-red-600' :
+                                vehicle.retirementScore < 60 ? 'text-orange-600' :
+                                'text-green-600'
+                              }`}>
+                                {vehicle.retirementScore}
+                              </span>
+                              <Progress value={vehicle.retirementScore} className="w-16 h-2" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Icon icon="material-symbols:check-circle" className="w-8 h-8 mr-2 text-green-500" />
+                    <span>No immediate retirements needed</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Upgrade Candidates */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Icon icon="material-symbols:upgrade" className="h-5 w-5 text-orange-500" />
+                <span>Upgrade Candidates</span>
+              </CardTitle>
+              <CardDescription>Vehicles with poor performance metrics</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-80 overflow-y-auto">
+                {data.retirementAnalytics?.upgradeCandidates?.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Plate</TableHead>
+                        <TableHead>Age</TableHead>
+                        <TableHead>Maint. Freq.</TableHead>
+                        <TableHead>Score</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {data.retirementAnalytics.upgradeCandidates.map((vehicle) => (
+                        <TableRow key={vehicle.id}>
+                          <TableCell className="font-medium">{vehicle.plateNumber}</TableCell>
+                          <TableCell>{vehicle.vehicleAge} yrs</TableCell>
+                          <TableCell>
+                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                              vehicle.maintenanceFrequency > 5
+                                ? 'bg-red-100 text-red-800'
+                                : vehicle.maintenanceFrequency > 3
+                                ? 'bg-orange-100 text-orange-800'
+                                : 'bg-green-100 text-green-800'
+                            }`}>
+                              {vehicle.maintenanceFrequency}x
+                            </span>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center space-x-2">
+                              <span className={`font-bold ${
+                                vehicle.retirementScore < 30 ? 'text-red-600' :
+                                vehicle.retirementScore < 60 ? 'text-orange-600' :
+                                'text-green-600'
+                              }`}>
+                                {vehicle.retirementScore}
+                              </span>
+                              <Progress value={vehicle.retirementScore} className="w-16 h-2" />
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <div className="flex items-center justify-center py-8 text-muted-foreground">
+                    <Icon icon="material-symbols:check-circle" className="w-8 h-8 mr-2 text-green-500" />
+                    <span>No upgrade candidates identified</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recommendations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center space-x-2">
+              <Icon icon="material-symbols:lightbulb" className="h-5 w-5 text-yellow-500" />
+              <span>Strategic Recommendations</span>
+            </CardTitle>
+            <CardDescription>Data-driven insights for fleet optimization</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {data.retirementAnalytics?.recommendations?.length > 0 ? (
+                data.retirementAnalytics.recommendations.map((rec, index) => (
+                  <div key={index} className={`p-4 rounded-lg border-l-4 ${
+                    rec.priority === 'high'
+                      ? 'border-red-500 bg-red-50'
+                      : rec.priority === 'medium'
+                      ? 'border-orange-500 bg-orange-50'
+                      : 'border-blue-500 bg-blue-50'
+                  }`}>
+                    <div className="flex items-start space-x-3">
+                      <Icon
+                        icon={
+                          rec.type === 'urgent' ? 'material-symbols:warning' :
+                          rec.type === 'upgrade' ? 'material-symbols:upgrade' :
+                          rec.type === 'aging_fleet' ? 'material-symbols:schedule' :
+                          'material-symbols:account-balance-wallet'
+                        }
+                        className={`w-5 h-5 mt-0.5 ${
+                          rec.priority === 'high' ? 'text-red-600' :
+                          rec.priority === 'medium' ? 'text-orange-600' :
+                          'text-blue-600'
+                        }`}
+                      />
+                      <div className="flex-1">
+                        <h4 className={`font-semibold text-sm ${
+                          rec.priority === 'high' ? 'text-red-800' :
+                          rec.priority === 'medium' ? 'text-orange-800' :
+                          'text-blue-800'
+                        }`}>
+                          {rec.title}
+                        </h4>
+                        <p className={`text-sm mt-1 ${
+                          rec.priority === 'high' ? 'text-red-700' :
+                          rec.priority === 'medium' ? 'text-orange-700' :
+                          'text-blue-700'
+                        }`}>
+                          {rec.description}
+                        </p>
+                        <p className={`text-xs mt-2 font-medium ${
+                          rec.priority === 'high' ? 'text-red-600' :
+                          rec.priority === 'medium' ? 'text-orange-600' :
+                          'text-blue-600'
+                        }`}>
+                          Action: {rec.action}
+                        </p>
+                        {rec.vehicles.length > 0 && (
+                          <div className="mt-2">
+                            <span className="text-xs text-muted-foreground">Affected vehicles: </span>
+                            <span className="text-xs font-medium">
+                              {rec.vehicles.join(', ')}
+                              {rec.vehicles.length < 3 && ' ...'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex items-center justify-center py-8 text-muted-foreground">
+                  <Icon icon="material-symbols:check-circle" className="w-8 h-8 mr-2 text-green-500" />
+                  <span>No specific recommendations at this time</span>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Trip Analytics Section */}
+      <div className="space-y-6">
+        <div>
+          <h3 className="text-2xl font-bold tracking-tight mb-1">Trip Analytics</h3>
+          <p className="text-muted-foreground">Delivery performance and trip details summary</p>
+        </div>
+
+        {/* Trip Overview Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Trips</CardTitle>
+              <Icon icon="material-symbols:route" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.tripAnalytics.totalTrips}</div>
+              <p className="text-xs text-muted-foreground">
+                {data.tripAnalytics.completedTrips} completed
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Distance</CardTitle>
+              <Icon icon="material-symbols:straighten" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.tripAnalytics.totalDistance.toLocaleString()} mi</div>
+              <p className="text-xs text-muted-foreground">
+                Avg: {data.tripAnalytics.avgDistance} mi/trip
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Duration</CardTitle>
+              <Icon icon="material-symbols:schedule" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.tripAnalytics.avgTripDuration} min</div>
+              <p className="text-xs text-muted-foreground">
+                {data.tripAnalytics.ongoingTrips} ongoing
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">On-Time Delivery</CardTitle>
+              <Icon icon="material-symbols:check-circle" className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{data.tripAnalytics.onTimeDeliveryRate}%</div>
+              <p className="text-xs text-muted-foreground">
+                Delivery performance
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+
+
+        {/* Trip Details Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Trip Details</CardTitle>
+            <CardDescription>
+              Latest trips with origin, destination, duration, mileage, vehicle, and driver information
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Trip ID</TableHead>
+                    <TableHead>Origin → Destination</TableHead>
+                    <TableHead>Vehicle</TableHead>
+                    <TableHead>Driver</TableHead>
+                    <TableHead>Distance</TableHead>
+                    <TableHead>Duration</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Delivery Time</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.tripAnalytics.recentTrips.map((trip) => (
+                    <TableRow key={trip.id}>
+                      <TableCell className="font-medium">{trip.id}</TableCell>
+                      <TableCell>
+                        <div className="space-y-1">
+                          <div className="flex items-center">
+                            <Icon icon="material-symbols:location-on" className="h-3 w-3 mr-1 text-green-500" />
+                            <span className="text-xs">{trip.origin}</span>
+                          </div>
+                          <div className="flex items-center">
+                            <Icon icon="material-symbols:flag" className="h-3 w-3 mr-1 text-red-500" />
+                            <span className="text-xs">{trip.destination}</span>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>{trip.plateNumber}</TableCell>
+                      <TableCell>{trip.driverName}</TableCell>
+                      <TableCell>{trip.distance} mi</TableCell>
+                      <TableCell>
+                        {trip.duration ? `${trip.duration} min` : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                          trip.status === 'completed' 
+                            ? 'bg-green-100 text-green-800' 
+                            : trip.status === 'ongoing' 
+                            ? 'bg-blue-100 text-blue-800' 
+                            : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {trip.status}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {trip.deliveryStatus === 'pending' ? (
+                          <span className="text-xs text-muted-foreground">Scheduled: {format(new Date(trip.scheduledDelivery), 'HH:mm')}</span>
+                        ) : (
+                          <div className="space-y-1">
+                            <div className="text-xs">Actual: {format(new Date(trip.actualDelivery), 'HH:mm')}</div>
+                            <span className={`inline-flex items-center px-1 py-0.5 rounded text-xs font-medium ${
+                              trip.deliveryStatus === 'early' 
+                                ? 'bg-green-100 text-green-700' 
+                                : trip.deliveryStatus === 'on_time' 
+                                ? 'bg-blue-100 text-blue-700' 
+                                : 'bg-red-100 text-red-700'
+                            }`}>
+                              {trip.deliveryStatus === 'on_time' ? 'On Time' : trip.deliveryStatus}
+                            </span>
+                          </div>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Driver and Vehicle Performance */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Driver Performance */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Driver Performance</CardTitle>
+              <CardDescription>Trip counts and on-time delivery rates by driver</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {data.tripAnalytics.tripsByDriver.map((driver) => (
+                  <div key={driver.driverName} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div className="space-y-1">
+                      <div className="font-medium">{driver.driverName}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {driver.totalTrips} trips • {driver.totalDistance} mi total
+                      </div>
+                    </div>
+                    <div className="text-right space-y-1">
+                      <div className="text-sm font-medium">{driver.onTimeRate}% on-time</div>
+                      <div className="text-xs text-muted-foreground">
+                        Avg: {driver.avgDistance} mi/trip
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Vehicle Utilization */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Vehicle Utilization</CardTitle>
+              <CardDescription>Trip utilization and distance by vehicle</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {data.tripAnalytics.tripsByVehicle.map((vehicle) => (
+                  <div key={vehicle.plateNumber} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="font-medium">{vehicle.plateNumber}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {vehicle.totalTrips} trips • {vehicle.totalDistance} mi
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs">
+                        <span>Utilization</span>
+                        <span>{vehicle.utilization}%</span>
+                      </div>
+                      <Progress value={vehicle.utilization} className="h-2" />
+                    </div>
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
