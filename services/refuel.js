@@ -5,6 +5,7 @@ export async function getRefuelById(refuelId) {
     // Fetch refuel with expanded truck_id relation to get truck information
     const refuel = await pb.collection("truck_fuel").getOne(refuelId, {
       expand: "truck_id",
+      requestKey: null
     });
     return refuel;
   } catch (error) {
@@ -36,7 +37,9 @@ export async function updateRefuel(refuelId, refuelData, receiptFile = null) {
     }
 
     // Update the record
-    const updatedRefuel = await pb.collection("truck_fuel").update(refuelId, formData);
+    const updatedRefuel = await pb.collection("truck_fuel").update(refuelId, formData, {
+      requestKey: null
+    });
     return updatedRefuel;
   } catch (error) {
     console.error("Error updating refuel:", error);
@@ -46,7 +49,9 @@ export async function updateRefuel(refuelId, refuelData, receiptFile = null) {
 
 export async function deleteRefuel(refuelId) {
   try {
-    const result = await pb.collection("truck_fuel").delete(refuelId);
+    const result = await pb.collection("truck_fuel").delete(refuelId, {
+      requestKey: null
+    });
     console.log(result)
     return true;
   } catch (error) {

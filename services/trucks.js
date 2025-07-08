@@ -5,6 +5,7 @@ export async function getTruckById(truckId) {
     // Fetch truck with expanded users_id relation to get driver information
     const truck = await pb.collection("trucks").getOne(truckId, {
       expand: "users_id",
+      requestKey: null
     });
     return truck;
   } catch (error) {
@@ -39,7 +40,9 @@ export async function updateTruck(truckId, truckData, imageFile = null) {
     }
 
     // Update the record
-    const updatedTruck = await pb.collection("trucks").update(truckId, formData);
+    const updatedTruck = await pb.collection("trucks").update(truckId, formData, {
+      requestKey: null
+    });
     return updatedTruck;
   } catch (error) {
     console.error("Error updating truck:", error);
@@ -49,7 +52,9 @@ export async function updateTruck(truckId, truckData, imageFile = null) {
 
 export async function deleteTruck(truck_id) {
   try {
-    const result = await pb.collection("trucks").delete(truck_id);
+    const result = await pb.collection("trucks").delete(truck_id, {
+      requestKey: null
+    });
     console.log(result)
     return true;
   } catch (error) {

@@ -10,9 +10,28 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLe
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, ComposedChart, Area, AreaChart } from 'recharts';
 import { Icon } from '@iconify/react';
 import { startOfMonth, endOfMonth, subMonths, format, parseISO } from 'date-fns';
+import { useRouter } from 'next/navigation';
 import pb from '@/services/pocketbase';
 
-const Dashboard = () => {  const [data, setData] = useState({
+const Dashboard = () => {
+  const router = useRouter();
+
+  // Redirect to analytics hub
+  useEffect(() => {
+    router.push('/analytics');
+  }, [router]);
+
+  return (
+    <div className="flex items-center justify-center h-screen">
+      <div className="space-y-4 text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto"></div>
+        <p className="text-muted-foreground">Redirecting to Analytics Dashboard...</p>
+      </div>
+    </div>
+  );
+};
+
+const OriginalDashboard = () => {  const [data, setData] = useState({
     fleet: { total: 0, assigned: 0, utilization: 0 },
     maintenance: { totalCost: 0, pendingRequests: 0, completionRate: 0, avgDays: 0, laborCost: 0 },
     maintenanceAnalytics: {
@@ -50,26 +69,30 @@ const Dashboard = () => {  const [data, setData] = useState({
     },
     forecasting: {
       fuelConsumption: {
-        predicted30Days: 0,
-        predicted60Days: 0,
-        predicted90Days: 0,
+        predictedToday: 0,
+        predictedThisMonth: 0,
+        predictedThisYear: 0,
+        predictedNextYear: 0,
         trend: 'increasing', // 'increasing', 'decreasing', 'stable'
         confidence: 0,
-        monthlyAverage: 0
+        dailyAverage: 0
       },
       fuelPrice: {
-        predicted30Days: 0,
-        predicted60Days: 0,
-        predicted90Days: 0,
+        predictedToday: 0,
+        predictedThisMonth: 0,
+        predictedThisYear: 0,
+        predictedNextYear: 0,
         trend: 'increasing',
         confidence: 0,
         currentAvgPrice: 0
       },
       costProjection: {
-        next30Days: 0,
-        next60Days: 0,
-        next90Days: 0
-      }
+        today: 0,
+        thisMonth: 0,
+        thisYear: 0,
+        nextYear: 0
+      },
+      perTruckData: {}
     },
     usageAnalytics: {
       highUsageVehicles: [],
@@ -119,6 +142,7 @@ const Dashboard = () => {  const [data, setData] = useState({
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [usageThreshold, setUsageThreshold] = useState('medium'); // low, medium, high
+  const [selectedTruck, setSelectedTruck] = useState('all'); // New state for truck selection
 
   // Usage threshold configurations
   const thresholdConfigs = {
@@ -307,117 +331,188 @@ const Dashboard = () => {  const [data, setData] = useState({
 
       // Calculate Fuel Consumption and Price Forecasting
       const calculateForecasting = () => {
-        // Get 6 months of fuel consumption data for trend analysis
-        const fuelConsumptionHistory = historicalFuel.map(item => ({
-          month: item.month,
-          consumption: fuelRecords.filter(record => {
-            const recordDate = new Date(record.created);
-            const [monthName, year] = item.month.split(' ');
-            const itemDate = new Date(`${monthName} 1, ${year}`);
-            return recordDate.getMonth() === itemDate.getMonth() &&
-                   recordDate.getFullYear() === itemDate.getFullYear();
-          }).reduce((sum, record) => sum + (record.fuel_amount || 0), 0)
-        }));
+        const today = new Date();
+        const startOfToday = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const startOfThisMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const startOfThisYear = new Date(today.getFullYear(), 0, 1);
+        const startOfNextYear = new Date(today.getFullYear() + 1, 0, 1);
+        const endOfThisYear = new Date(today.getFullYear(), 11, 31);
+        const endOfNextYear = new Date(today.getFullYear() + 1, 11, 31);
 
-        // Calculate average monthly consumption
-        const monthlyConsumption = fuelConsumptionHistory.map(item => item.consumption);
-        const avgMonthlyConsumption = monthlyConsumption.length > 0 ?
-          monthlyConsumption.reduce((sum, val) => sum + val, 0) / monthlyConsumption.length : 0;
+        // Calculate per-truck forecasting data
+        const perTruckData = {};
 
-        // Simple linear trend calculation for consumption
-        let consumptionTrend = 'stable';
-        let consumptionSlope = 0;
-        if (monthlyConsumption.length >= 3) {
-          const recentAvg = monthlyConsumption.slice(-3).reduce((sum, val) => sum + val, 0) / 3;
-          const olderAvg = monthlyConsumption.slice(0, 3).reduce((sum, val) => sum + val, 0) / 3;
-          consumptionSlope = (recentAvg - olderAvg) / 3;
+        trucks.forEach(truck => {
+          const truckFuelRecords = fuelRecords.filter(record => record.truck_id === truck.id);
 
-          if (consumptionSlope > avgMonthlyConsumption * 0.05) {
-            consumptionTrend = 'increasing';
-          } else if (consumptionSlope < -avgMonthlyConsumption * 0.05) {
-            consumptionTrend = 'decreasing';
-          }
-        }
+          // Get historical fuel consumption for this truck
+          const fuelConsumptionHistory = historicalFuel.map(item => ({
+            month: item.month,
+            consumption: truckFuelRecords.filter(record => {
+              const recordDate = new Date(record.created);
+              const [monthName, year] = item.month.split(' ');
+              const itemDate = new Date(`${monthName} 1, ${year}`);
+              return recordDate.getMonth() === itemDate.getMonth() &&
+                     recordDate.getFullYear() === itemDate.getFullYear();
+            }).reduce((sum, record) => sum + (record.fuel_amount || 0), 0)
+          }));
 
-        // Forecast fuel consumption for 30, 60, 90 days
-        const forecastConsumption = (days) => {
-          const monthlyFactor = days / 30;
-          const trendAdjustment = consumptionSlope * monthlyFactor;
-          return Math.max(0, avgMonthlyConsumption * monthlyFactor + trendAdjustment);
-        };
+          // Calculate average daily consumption for this truck
+          const monthlyConsumption = fuelConsumptionHistory.map(item => item.consumption);
+          const avgMonthlyConsumption = monthlyConsumption.length > 0 ?
+            monthlyConsumption.reduce((sum, val) => sum + val, 0) / monthlyConsumption.length : 0;
+          const avgDailyConsumption = avgMonthlyConsumption / 30; // Rough daily average
 
-        // Calculate fuel price trends
-        const fuelPriceHistory = fuelRecords
-          .filter(record => record.fuel_price && record.fuel_price > 0)
-          .sort((a, b) => new Date(a.created) - new Date(b.created));
+          // Simple linear trend calculation for consumption
+          let consumptionTrend = 'stable';
+          let consumptionSlope = 0;
+          if (monthlyConsumption.length >= 3) {
+            const recentAvg = monthlyConsumption.slice(-3).reduce((sum, val) => sum + val, 0) / 3;
+            const olderAvg = monthlyConsumption.slice(0, 3).reduce((sum, val) => sum + val, 0) / 3;
+            consumptionSlope = (recentAvg - olderAvg) / 3;
 
-        let avgFuelPrice = 0;
-        let priceTrend = 'stable';
-        let priceSlope = 0;
-
-        if (fuelPriceHistory.length > 0) {
-          avgFuelPrice = fuelPriceHistory.reduce((sum, record) => sum + record.fuel_price, 0) / fuelPriceHistory.length;
-
-          // Calculate price trend using recent vs older prices
-          if (fuelPriceHistory.length >= 6) {
-            const recentPrices = fuelPriceHistory.slice(-Math.floor(fuelPriceHistory.length / 3));
-            const olderPrices = fuelPriceHistory.slice(0, Math.floor(fuelPriceHistory.length / 3));
-
-            const recentAvgPrice = recentPrices.reduce((sum, r) => sum + r.fuel_price, 0) / recentPrices.length;
-            const olderAvgPrice = olderPrices.reduce((sum, r) => sum + r.fuel_price, 0) / olderPrices.length;
-
-            priceSlope = (recentAvgPrice - olderAvgPrice) / Math.floor(fuelPriceHistory.length / 3);
-
-            if (priceSlope > avgFuelPrice * 0.02) {
-              priceTrend = 'increasing';
-            } else if (priceSlope < -avgFuelPrice * 0.02) {
-              priceTrend = 'decreasing';
+            if (consumptionSlope > avgMonthlyConsumption * 0.05) {
+              consumptionTrend = 'increasing';
+            } else if (consumptionSlope < -avgMonthlyConsumption * 0.05) {
+              consumptionTrend = 'decreasing';
             }
           }
-        }
 
-        // Forecast fuel prices for 30, 60, 90 days
-        const forecastPrice = (days) => {
-          const monthlyFactor = days / 30;
-          const trendAdjustment = priceSlope * monthlyFactor;
-          return Math.max(0, avgFuelPrice + trendAdjustment);
-        };
+          // Calculate consumption forecasts
+          const daysInThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+          const daysLeftInThisMonth = daysInThisMonth - today.getDate();
+          const daysInThisYear = (endOfThisYear - startOfThisYear) / (1000 * 60 * 60 * 24);
+          const daysLeftInThisYear = (endOfThisYear - today) / (1000 * 60 * 60 * 24);
+          const daysInNextYear = (endOfNextYear - startOfNextYear) / (1000 * 60 * 60 * 24);
 
-        // Calculate confidence based on data consistency
-        const calculateConfidence = (values) => {
-          if (values.length < 3) return 50;
-          const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
-          const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
-          const coefficientOfVariation = variance > 0 ? Math.sqrt(variance) / mean : 0;
-          return Math.max(60, Math.min(95, 90 - (coefficientOfVariation * 100)));
-        };
+          const forecastConsumption = (days) => {
+            const trendAdjustment = consumptionSlope * (days / 30);
+            return Math.max(0, avgDailyConsumption * days + trendAdjustment);
+          };
 
-        const consumptionConfidence = calculateConfidence(monthlyConsumption);
-        const priceConfidence = fuelPriceHistory.length > 0 ?
-          calculateConfidence(fuelPriceHistory.map(r => r.fuel_price)) : 50;
+          // Calculate fuel price trends for this truck
+          const truckFuelPriceHistory = truckFuelRecords
+            .filter(record => record.fuel_price && record.fuel_price > 0)
+            .sort((a, b) => new Date(a.created) - new Date(b.created));
+
+          let avgFuelPrice = 0;
+          let priceTrend = 'stable';
+          let priceSlope = 0;
+
+          if (truckFuelPriceHistory.length > 0) {
+            avgFuelPrice = truckFuelPriceHistory.reduce((sum, record) => sum + record.fuel_price, 0) / truckFuelPriceHistory.length;
+
+            // Calculate price trend using recent vs older prices
+            if (truckFuelPriceHistory.length >= 6) {
+              const recentPrices = truckFuelPriceHistory.slice(-Math.floor(truckFuelPriceHistory.length / 3));
+              const olderPrices = truckFuelPriceHistory.slice(0, Math.floor(truckFuelPriceHistory.length / 3));
+
+              const recentAvgPrice = recentPrices.reduce((sum, r) => sum + r.fuel_price, 0) / recentPrices.length;
+              const olderAvgPrice = olderPrices.reduce((sum, r) => sum + r.fuel_price, 0) / olderPrices.length;
+
+              priceSlope = (recentAvgPrice - olderAvgPrice) / Math.floor(truckFuelPriceHistory.length / 3);
+
+              if (priceSlope > avgFuelPrice * 0.02) {
+                priceTrend = 'increasing';
+              } else if (priceSlope < -avgFuelPrice * 0.02) {
+                priceTrend = 'decreasing';
+              }
+            }
+          }
+
+          // Forecast fuel prices
+          const forecastPrice = (days) => {
+            const trendAdjustment = priceSlope * (days / 30);
+            return Math.max(0, avgFuelPrice + trendAdjustment);
+          };
+
+          // Calculate confidence based on data consistency
+          const calculateConfidence = (values) => {
+            if (values.length < 3) return 50;
+            const mean = values.reduce((sum, val) => sum + val, 0) / values.length;
+            const variance = values.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / values.length;
+            const coefficientOfVariation = variance > 0 ? Math.sqrt(variance) / mean : 0;
+            return Math.max(60, Math.min(95, 90 - (coefficientOfVariation * 100)));
+          };
+
+          const consumptionConfidence = calculateConfidence(monthlyConsumption);
+          const priceConfidence = truckFuelPriceHistory.length > 0 ?
+            calculateConfidence(truckFuelPriceHistory.map(r => r.fuel_price)) : 50;
+
+          perTruckData[truck.id] = {
+            truckInfo: {
+              id: truck.id,
+              plateNumber: truck.plate_number,
+              type: truck.truck_type || 'Unknown'
+            },
+            fuelConsumption: {
+              predictedToday: Math.round(forecastConsumption(1) * 10) / 10,
+              predictedThisMonth: Math.round(forecastConsumption(daysLeftInThisMonth)),
+              predictedThisYear: Math.round(forecastConsumption(daysLeftInThisYear)),
+              predictedNextYear: Math.round(forecastConsumption(daysInNextYear)),
+              trend: consumptionTrend,
+              confidence: Math.round(consumptionConfidence),
+              dailyAverage: Math.round(avgDailyConsumption * 10) / 10
+            },
+            fuelPrice: {
+              predictedToday: Math.round(forecastPrice(1) * 100) / 100,
+              predictedThisMonth: Math.round(forecastPrice(daysLeftInThisMonth) * 100) / 100,
+              predictedThisYear: Math.round(forecastPrice(daysLeftInThisYear) * 100) / 100,
+              predictedNextYear: Math.round(forecastPrice(daysInNextYear) * 100) / 100,
+              trend: priceTrend,
+              confidence: Math.round(priceConfidence),
+              currentAvgPrice: Math.round(avgFuelPrice * 100) / 100
+            },
+            costProjection: {
+              today: Math.round(forecastConsumption(1) * forecastPrice(1)),
+              thisMonth: Math.round(forecastConsumption(daysLeftInThisMonth) * forecastPrice(daysLeftInThisMonth)),
+              thisYear: Math.round(forecastConsumption(daysLeftInThisYear) * forecastPrice(daysLeftInThisYear)),
+              nextYear: Math.round(forecastConsumption(daysInNextYear) * forecastPrice(daysInNextYear))
+            }
+          };
+        });
+
+        // Calculate fleet-wide averages
+        const allTruckData = Object.values(perTruckData);
+        const fleetAvgDaily = allTruckData.length > 0 ?
+          allTruckData.reduce((sum, truck) => sum + truck.fuelConsumption.dailyAverage, 0) / allTruckData.length : 0;
+        const fleetAvgPrice = allTruckData.length > 0 ?
+          allTruckData.reduce((sum, truck) => sum + truck.fuelPrice.currentAvgPrice, 0) / allTruckData.length : 0;
+        const fleetAvgConfidence = allTruckData.length > 0 ?
+          allTruckData.reduce((sum, truck) => sum + truck.fuelConsumption.confidence, 0) / allTruckData.length : 50;
+
+        // Calculate days for fleet-wide forecasts
+        const daysInThisMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+        const daysLeftInThisMonth = daysInThisMonth - today.getDate();
+        const daysLeftInThisYear = (endOfThisYear - today) / (1000 * 60 * 60 * 24);
+        const daysInNextYear = (endOfNextYear - startOfNextYear) / (1000 * 60 * 60 * 24);
 
         return {
           fuelConsumption: {
-            predicted30Days: Math.round(forecastConsumption(30)),
-            predicted60Days: Math.round(forecastConsumption(60)),
-            predicted90Days: Math.round(forecastConsumption(90)),
-            trend: consumptionTrend,
-            confidence: Math.round(consumptionConfidence),
-            monthlyAverage: Math.round(avgMonthlyConsumption)
+            predictedToday: Math.round(fleetAvgDaily * trucks.length * 10) / 10,
+            predictedThisMonth: Math.round(fleetAvgDaily * trucks.length * daysLeftInThisMonth),
+            predictedThisYear: Math.round(fleetAvgDaily * trucks.length * daysLeftInThisYear),
+            predictedNextYear: Math.round(fleetAvgDaily * trucks.length * daysInNextYear),
+            trend: allTruckData.length > 0 ? allTruckData[0].fuelConsumption.trend : 'stable',
+            confidence: Math.round(fleetAvgConfidence),
+            dailyAverage: Math.round(fleetAvgDaily * trucks.length * 10) / 10
           },
           fuelPrice: {
-            predicted30Days: Math.round(forecastPrice(30) * 100) / 100,
-            predicted60Days: Math.round(forecastPrice(60) * 100) / 100,
-            predicted90Days: Math.round(forecastPrice(90) * 100) / 100,
-            trend: priceTrend,
-            confidence: Math.round(priceConfidence),
-            currentAvgPrice: Math.round(avgFuelPrice * 100) / 100
+            predictedToday: Math.round(fleetAvgPrice * 100) / 100,
+            predictedThisMonth: Math.round(fleetAvgPrice * 100) / 100,
+            predictedThisYear: Math.round(fleetAvgPrice * 100) / 100,
+            predictedNextYear: Math.round(fleetAvgPrice * 100) / 100,
+            trend: allTruckData.length > 0 ? allTruckData[0].fuelPrice.trend : 'stable',
+            confidence: Math.round(fleetAvgConfidence),
+            currentAvgPrice: Math.round(fleetAvgPrice * 100) / 100
           },
           costProjection: {
-            next30Days: Math.round(forecastConsumption(30) * forecastPrice(30)),
-            next60Days: Math.round(forecastConsumption(60) * forecastPrice(60)),
-            next90Days: Math.round(forecastConsumption(90) * forecastPrice(90))
-          }
+            today: Math.round(fleetAvgDaily * trucks.length * fleetAvgPrice),
+            thisMonth: Math.round(fleetAvgDaily * trucks.length * daysLeftInThisMonth * fleetAvgPrice),
+            thisYear: Math.round(fleetAvgDaily * trucks.length * daysLeftInThisYear * fleetAvgPrice),
+            nextYear: Math.round(fleetAvgDaily * trucks.length * daysInNextYear * fleetAvgPrice)
+          },
+          perTruckData
         };
       };
 
@@ -1748,9 +1843,27 @@ const Dashboard = () => {  const [data, setData] = useState({
 
       {/* Fuel Forecasting Section */}
       <div className="space-y-4">
-        <div className="flex items-center space-x-2">
-          <Icon icon="material-symbols:trending-up" className="h-5 w-5 text-primary" />
-          <h3 className="text-xl font-semibold">Fuel Consumption & Price Forecasting</h3>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <Icon icon="material-symbols:trending-up" className="h-5 w-5 text-primary" />
+            <h3 className="text-xl font-semibold">Fuel Consumption & Price Forecasting</h3>
+          </div>
+          <div className="flex items-center space-x-2">
+            <span className="text-sm text-muted-foreground">Select Truck:</span>
+            <Select value={selectedTruck} onValueChange={setSelectedTruck}>
+              <SelectTrigger className="w-48">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Trucks (Fleet)</SelectItem>
+                {Object.values(data.forecasting?.perTruckData || {}).map((truckData) => (
+                  <SelectItem key={truckData.truckInfo.id} value={truckData.truckInfo.id}>
+                    {truckData.truckInfo.plateNumber} - {truckData.truckInfo.type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
@@ -1762,48 +1875,106 @@ const Dashboard = () => {  const [data, setData] = useState({
                 <span>Fuel Consumption Forecast</span>
               </CardTitle>
               <CardDescription>
-                Predicted fuel consumption based on historical trends
+                {selectedTruck === 'all'
+                  ? 'Predicted fuel consumption based on fleet historical trends'
+                  : `Predicted fuel consumption for ${data.forecasting?.perTruckData?.[selectedTruck]?.truckInfo?.plateNumber || 'selected truck'}`
+                }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Current Monthly Average</span>
-                <span className="font-medium">{data.forecasting.fuelConsumption.monthlyAverage} L</span>
+                <span className="text-sm text-muted-foreground">Current Daily Average</span>
+                <span className="font-medium">
+                  {selectedTruck === 'all'
+                    ? data.forecasting.fuelConsumption.dailyAverage
+                    : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.dailyAverage || 0
+                  } L
+                </span>
               </div>
 
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Next 30 days</span>
+                  <span className="text-sm text-muted-foreground">Today</span>
                   <div className="flex items-center space-x-2">
-                    <span className="font-medium">{data.forecasting.fuelConsumption.predicted30Days} L</span>
+                    <span className="font-medium">
+                      {selectedTruck === 'all'
+                        ? data.forecasting.fuelConsumption.predictedToday
+                        : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedToday || 0
+                      } L
+                    </span>
                     <Icon
-                      icon={data.forecasting.fuelConsumption.trend === 'increasing' ? 'material-symbols:trending-up' :
-                            data.forecasting.fuelConsumption.trend === 'decreasing' ? 'material-symbols:trending-down' :
-                            'material-symbols:trending-flat'}
+                      icon={
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelConsumption.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.trend
+                        ) === 'increasing' ? 'material-symbols:trending-up' :
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelConsumption.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.trend
+                        ) === 'decreasing' ? 'material-symbols:trending-down' :
+                        'material-symbols:trending-flat'
+                      }
                       className={`h-4 w-4 ${
-                        data.forecasting.fuelConsumption.trend === 'increasing' ? 'text-red-500' :
-                        data.forecasting.fuelConsumption.trend === 'decreasing' ? 'text-green-500' :
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelConsumption.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.trend
+                        ) === 'increasing' ? 'text-red-500' :
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelConsumption.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.trend
+                        ) === 'decreasing' ? 'text-green-500' :
                         'text-gray-500'
                       }`}
                     />
                   </div>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Next 60 days</span>
-                  <span className="font-medium">{data.forecasting.fuelConsumption.predicted60Days} L</span>
+                  <span className="text-sm text-muted-foreground">This Month ({format(new Date(), 'MMMM')})</span>
+                  <span className="font-medium">
+                    {selectedTruck === 'all'
+                      ? data.forecasting.fuelConsumption.predictedThisMonth
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedThisMonth || 0
+                    } L
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Next 90 days</span>
-                  <span className="font-medium">{data.forecasting.fuelConsumption.predicted90Days} L</span>
+                  <span className="text-sm text-muted-foreground">This Year ({new Date().getFullYear()})</span>
+                  <span className="font-medium">
+                    {selectedTruck === 'all'
+                      ? data.forecasting.fuelConsumption.predictedThisYear
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedThisYear || 0
+                    } L
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Next Year ({new Date().getFullYear() + 1})</span>
+                  <span className="font-medium">
+                    {selectedTruck === 'all'
+                      ? data.forecasting.fuelConsumption.predictedNextYear
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedNextYear || 0
+                    } L
+                  </span>
                 </div>
               </div>
 
               <div className="pt-2 border-t">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Forecast Confidence</span>
-                  <span className="font-medium">{data.forecasting.fuelConsumption.confidence}%</span>
+                  <span className="font-medium">
+                    {selectedTruck === 'all'
+                      ? data.forecasting.fuelConsumption.confidence
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.confidence || 0
+                    }%
+                  </span>
                 </div>
-                <Progress value={data.forecasting.fuelConsumption.confidence} className="mt-1 h-2" />
+                <Progress
+                  value={
+                    selectedTruck === 'all'
+                      ? data.forecasting.fuelConsumption.confidence
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.confidence || 0
+                  }
+                  className="mt-1 h-2"
+                />
               </div>
             </CardContent>
           </Card>
@@ -1816,48 +1987,106 @@ const Dashboard = () => {  const [data, setData] = useState({
                 <span>Fuel Price Forecast</span>
               </CardTitle>
               <CardDescription>
-                Predicted fuel price trends based on historical data
+                {selectedTruck === 'all'
+                  ? 'Predicted fuel price trends based on historical data'
+                  : `Predicted fuel price trends for ${data.forecasting?.perTruckData?.[selectedTruck]?.truckInfo?.plateNumber || 'selected truck'}`
+                }
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">Current Average Price</span>
-                <span className="font-medium">₱{data.forecasting.fuelPrice.currentAvgPrice}/L</span>
+                <span className="font-medium">
+                  ₱{selectedTruck === 'all'
+                    ? data.forecasting.fuelPrice.currentAvgPrice
+                    : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.currentAvgPrice || 0
+                  }/L
+                </span>
               </div>
 
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">Next 30 days</span>
+                  <span className="text-sm text-muted-foreground">Today</span>
                   <div className="flex items-center space-x-2">
-                    <span className="font-medium">₱{data.forecasting.fuelPrice.predicted30Days}/L</span>
+                    <span className="font-medium">
+                      ₱{selectedTruck === 'all'
+                        ? data.forecasting.fuelPrice.predictedToday
+                        : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.predictedToday || 0
+                      }/L
+                    </span>
                     <Icon
-                      icon={data.forecasting.fuelPrice.trend === 'increasing' ? 'material-symbols:trending-up' :
-                            data.forecasting.fuelPrice.trend === 'decreasing' ? 'material-symbols:trending-down' :
-                            'material-symbols:trending-flat'}
+                      icon={
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelPrice.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.trend
+                        ) === 'increasing' ? 'material-symbols:trending-up' :
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelPrice.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.trend
+                        ) === 'decreasing' ? 'material-symbols:trending-down' :
+                        'material-symbols:trending-flat'
+                      }
                       className={`h-4 w-4 ${
-                        data.forecasting.fuelPrice.trend === 'increasing' ? 'text-red-500' :
-                        data.forecasting.fuelPrice.trend === 'decreasing' ? 'text-green-500' :
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelPrice.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.trend
+                        ) === 'increasing' ? 'text-red-500' :
+                        (selectedTruck === 'all'
+                          ? data.forecasting.fuelPrice.trend
+                          : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.trend
+                        ) === 'decreasing' ? 'text-green-500' :
                         'text-gray-500'
                       }`}
                     />
                   </div>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Next 60 days</span>
-                  <span className="font-medium">₱{data.forecasting.fuelPrice.predicted60Days}/L</span>
+                  <span className="text-sm text-muted-foreground">This Month ({format(new Date(), 'MMMM')})</span>
+                  <span className="font-medium">
+                    ₱{selectedTruck === 'all'
+                      ? data.forecasting.fuelPrice.predictedThisMonth
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.predictedThisMonth || 0
+                    }/L
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-sm text-muted-foreground">Next 90 days</span>
-                  <span className="font-medium">₱{data.forecasting.fuelPrice.predicted90Days}/L</span>
+                  <span className="text-sm text-muted-foreground">This Year ({new Date().getFullYear()})</span>
+                  <span className="font-medium">
+                    ₱{selectedTruck === 'all'
+                      ? data.forecasting.fuelPrice.predictedThisYear
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.predictedThisYear || 0
+                    }/L
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-sm text-muted-foreground">Next Year ({new Date().getFullYear() + 1})</span>
+                  <span className="font-medium">
+                    ₱{selectedTruck === 'all'
+                      ? data.forecasting.fuelPrice.predictedNextYear
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.predictedNextYear || 0
+                    }/L
+                  </span>
                 </div>
               </div>
 
               <div className="pt-2 border-t">
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Forecast Confidence</span>
-                  <span className="font-medium">{data.forecasting.fuelPrice.confidence}%</span>
+                  <span className="font-medium">
+                    {selectedTruck === 'all'
+                      ? data.forecasting.fuelPrice.confidence
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.confidence || 0
+                    }%
+                  </span>
                 </div>
-                <Progress value={data.forecasting.fuelPrice.confidence} className="mt-1 h-2" />
+                <Progress
+                  value={
+                    selectedTruck === 'all'
+                      ? data.forecasting.fuelPrice.confidence
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.fuelPrice?.confidence || 0
+                  }
+                  className="mt-1 h-2"
+                />
               </div>
             </CardContent>
           </Card>
@@ -1871,32 +2100,114 @@ const Dashboard = () => {  const [data, setData] = useState({
               <span>Fuel Cost Projections</span>
             </CardTitle>
             <CardDescription>
-              Estimated total fuel costs based on consumption and price forecasts
+              {selectedTruck === 'all'
+                ? 'Estimated total fuel costs based on fleet consumption and price forecasts'
+                : `Estimated fuel costs for ${data.forecasting?.perTruckData?.[selectedTruck]?.truckInfo?.plateNumber || 'selected truck'}`
+              }
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-4">
               <div className="text-center p-4 rounded-lg border">
-                <div className="text-sm text-muted-foreground mb-1">30 Days</div>
+                <div className="text-sm text-muted-foreground mb-1">Today</div>
                 <div className="text-xl font-bold text-blue-600">
-                  {formatCurrency(data.forecasting.costProjection.next30Days)}
+                  {formatCurrency(
+                    selectedTruck === 'all'
+                      ? data.forecasting.costProjection.today
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.today || 0
+                  )}
                 </div>
               </div>
               <div className="text-center p-4 rounded-lg border">
-                <div className="text-sm text-muted-foreground mb-1">60 Days</div>
+                <div className="text-sm text-muted-foreground mb-1">This Month</div>
+                <div className="text-xl font-bold text-green-600">
+                  {formatCurrency(
+                    selectedTruck === 'all'
+                      ? data.forecasting.costProjection.thisMonth
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.thisMonth || 0
+                  )}
+                </div>
+              </div>
+              <div className="text-center p-4 rounded-lg border">
+                <div className="text-sm text-muted-foreground mb-1">This Year</div>
                 <div className="text-xl font-bold text-orange-600">
-                  {formatCurrency(data.forecasting.costProjection.next60Days)}
+                  {formatCurrency(
+                    selectedTruck === 'all'
+                      ? data.forecasting.costProjection.thisYear
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.thisYear || 0
+                  )}
                 </div>
               </div>
               <div className="text-center p-4 rounded-lg border">
-                <div className="text-sm text-muted-foreground mb-1">90 Days</div>
+                <div className="text-sm text-muted-foreground mb-1">Next Year</div>
                 <div className="text-xl font-bold text-red-600">
-                  {formatCurrency(data.forecasting.costProjection.next90Days)}
+                  {formatCurrency(
+                    selectedTruck === 'all'
+                      ? data.forecasting.costProjection.nextYear
+                      : data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.nextYear || 0
+                  )}
                 </div>
               </div>
             </div>
           </CardContent>
         </Card>
+
+        {/* Fuel Consumption Trends Chart */}
+        {selectedTruck !== 'all' && data.forecasting?.perTruckData?.[selectedTruck] && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center space-x-2">
+                <Icon icon="material-symbols:trending-up" className="h-5 w-5" />
+                <span>Fuel Consumption Forecast Visualization</span>
+              </CardTitle>
+              <CardDescription>
+                Visual representation of fuel consumption forecast for {data.forecasting?.perTruckData?.[selectedTruck]?.truckInfo?.plateNumber}
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer
+                config={chartConfig}
+                className="min-h-[300px] w-full"
+              >
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart
+                    data={[
+                      {
+                        period: 'Today',
+                        consumption: data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedToday || 0,
+                        cost: data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.today || 0
+                      },
+                      {
+                        period: 'This Month',
+                        consumption: data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedThisMonth || 0,
+                        cost: data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.thisMonth || 0
+                      },
+                      {
+                        period: 'This Year',
+                        consumption: data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedThisYear || 0,
+                        cost: data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.thisYear || 0
+                      },
+                      {
+                        period: 'Next Year',
+                        consumption: data.forecasting?.perTruckData?.[selectedTruck]?.fuelConsumption?.predictedNextYear || 0,
+                        cost: data.forecasting?.perTruckData?.[selectedTruck]?.costProjection?.nextYear || 0
+                      }
+                    ]}
+                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="period" />
+                    <YAxis yAxisId="left" />
+                    <YAxis yAxisId="right" orientation="right" />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar yAxisId="left" dataKey="consumption" fill="#3b82f6" name="Fuel Consumption (L)" />
+                    <Bar yAxisId="right" dataKey="cost" fill="#10b981" name="Projected Cost (₱)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </ChartContainer>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* Vehicle Usage Analytics Section */}

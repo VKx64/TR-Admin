@@ -29,6 +29,34 @@ const data = {
   // Main Navigation
   navMain: [
     {
+      title: "Analytics Dashboard",
+      url: "/analytics",
+      icon: PieChart,
+      isActive: false,
+      items: [
+        {
+          title: "Analytics Hub",
+          url: "/analytics",
+        },
+        {
+          title: "Fuel Analytics",
+          url: "/analytics/fuel",
+        },
+        {
+          title: "Maintenance Analytics",
+          url: "/analytics/maintenance",
+        },
+        {
+          title: "Trip Analytics",
+          url: "/analytics/trips",
+        },
+        {
+          title: "Usage Analytics",
+          url: "/analytics/usage",
+        },
+      ],
+    },
+    {
       title: "Truck Management",
       url: "",
       icon: SquareTerminal,
@@ -97,7 +125,7 @@ const data = {
   projects: [
     {
       name: "Analytics Dashboard",
-      url: "/",
+      url: "/analytics",
       icon: Frame,
     },
     {

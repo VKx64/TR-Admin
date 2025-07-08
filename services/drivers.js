@@ -5,6 +5,7 @@ export async function getDriverById(driverId) {
     // Fetch user with expanded driver_details_id relation to get driver information
     const driver = await pb.collection("users").getOne(driverId, {
       expand: "driver_details_id",
+      requestKey: null
     });
     return driver;
   } catch (error) {
@@ -32,10 +33,14 @@ export async function updateDriver(driverId, userData, driverDetailsData = {}, l
     }
 
     // Update the user record
-    await pb.collection("users").update(driverId, userFormData);
+    await pb.collection("users").update(driverId, userFormData, {
+      requestKey: null
+    });
 
     // Get the current user to check if they have driver details
-    const currentDriver = await pb.collection("users").getOne(driverId);
+    const currentDriver = await pb.collection("users").getOne(driverId, {
+      requestKey: null
+    });
     let driverDetailsId = currentDriver.driver_details_id;
 
     // Create driver details form data
@@ -59,14 +64,20 @@ export async function updateDriver(driverId, userData, driverDetailsData = {}, l
     // If driver details exist, update them; otherwise create new driver details
     if (driverDetailsId) {
       // Update existing driver details
-      await pb.collection("driver_details").update(driverDetailsId, detailsFormData);
+      await pb.collection("driver_details").update(driverDetailsId, detailsFormData, {
+        requestKey: null
+      });
     } else {
       // Create new driver details and link to user
-      const newDriverDetails = await pb.collection("driver_details").create(detailsFormData);
+      const newDriverDetails = await pb.collection("driver_details").create(detailsFormData, {
+        requestKey: null
+      });
 
       // Update user with new driver_details_id
       await pb.collection("users").update(driverId, {
         driver_details_id: newDriverDetails.id
+      }, {
+        requestKey: null
       });
     }
 
@@ -80,15 +91,21 @@ export async function updateDriver(driverId, userData, driverDetailsData = {}, l
 export async function deleteDriver(driverId) {
   try {
     // Get the driver to find related driver_details
-    const driver = await pb.collection("users").getOne(driverId);
+    const driver = await pb.collection("users").getOne(driverId, {
+      requestKey: null
+    });
 
     // If there are driver details, delete them first
     if (driver.driver_details_id) {
-      await pb.collection("driver_details").delete(driver.driver_details_id);
+      await pb.collection("driver_details").delete(driver.driver_details_id, {
+        requestKey: null
+      });
     }
 
     // Delete the user record
-    await pb.collection("users").delete(driverId);
+    await pb.collection("users").delete(driverId, {
+      requestKey: null
+    });
     return true;
   } catch (error) {
     console.error("Error deleting driver:", error);
