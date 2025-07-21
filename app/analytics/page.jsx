@@ -12,7 +12,7 @@ const AnalyticsHub = () => {
   const analyticsModules = [
     {
       title: "Fuel Analytics",
-      description: "Monitor fuel consumption, costs, efficiency, and forecasting",
+      description: "Monitor fuel consumption, costs, and efficiency",
       icon: "mdi:gas-station",
       color: "bg-blue-500",
       route: "/analytics/fuel",
@@ -20,8 +20,8 @@ const AnalyticsHub = () => {
         "Fuel consumption tracking",
         "Cost analysis and forecasting",
         "MPG analytics by vehicle",
-        "Fuel price predictions",
-        "Efficiency comparisons"
+        "Efficiency comparisons",
+        "Consumption trend analysis"
       ]
     },
     {

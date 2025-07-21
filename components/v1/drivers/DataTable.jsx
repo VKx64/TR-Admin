@@ -76,24 +76,24 @@ const ActionsCell = ({ row, meta }) => {
   const handleView = () => setIsViewDialogOpen(true);
   const handleEdit = () => setIsEditDialogOpen(true);
 
-  // Function to handle the delete confirmation
-  const handleDeleteConfirm = async () => {
+  // Function to handle the archive confirmation
+  const handleArchiveConfirm = async () => {
     try {
       const success = await deleteDriver(driverId);
       if (success) {
-        toast.success("Driver deleted successfully.");
+        toast.success("Driver archived successfully.");
         // Call refreshData if it exists to refresh the table
         if (typeof refreshData === "function") {
           refreshData();
         } else {
-          console.log("Driver deleted, please refresh the list manually.");
+          console.log("Driver archived, please refresh the list manually.");
         }
       } else {
-        toast.error("Failed to delete driver.");
+        toast.error("Failed to archive driver.");
       }
     } catch (error) {
-      toast.error("Failed to delete driver.");
-      console.error("Delete error:", error);
+      toast.error("Failed to archive driver.");
+      console.error("Archive error:", error);
     }
   };
 
@@ -107,22 +107,21 @@ const ActionsCell = ({ row, meta }) => {
       </Button>
       <AlertDialog>
         <AlertDialogTrigger asChild>
-          <Button size="sm" variant="destructive">
-            Delete
+          <Button size="sm" variant="outline" className="bg-amber-500 hover:bg-amber-600 text-white border-amber-500 hover:border-amber-600">
+            Archive
           </Button>
         </AlertDialogTrigger>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogTitle>Are you sure you want to archive this driver?</AlertDialogTitle>
             <AlertDialogDescription>
-              This action cannot be undone. This will permanently delete the
-              driver record.
+              This action will archive the driver record. Archived drivers can be restored later if needed.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteConfirm}>
-              Continue
+            <AlertDialogAction onClick={handleArchiveConfirm}>
+              Archive Driver
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

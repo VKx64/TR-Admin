@@ -38,7 +38,7 @@ const OriginalDashboard = () => {  const [data, setData] = useState({
       vehiclesInMaintenance: [],
       issueProneVehicles: [],
     },
-    fuel: { totalCost: 0, totalGallons: 0, avgMPG: 0, costPerMile: 0 },
+    fuel: { totalCost: 0, totalLiters: 0, avgMPG: 0, costPerMile: 0 },
     financial: { totalOperating: 0, costPerTruck: 0 },
     charts: {
       maintenanceTrend: [],
@@ -241,7 +241,7 @@ const OriginalDashboard = () => {  const [data, setData] = useState({
         const calculatedPrice = (record.fuel_amount || 0) * (record.fuel_price || 0);
         return sum + calculatedPrice;
       }, 0);
-      const totalGallons = fuelRecords.reduce((sum, record) => sum + (record.fuel_amount || 0), 0);
+      const totalLiters = fuelRecords.reduce((sum, record) => sum + (record.fuel_amount || 0), 0);
 
       // Calculate MPG and cost per mile
       let totalMPG = 0;
@@ -1335,7 +1335,7 @@ const OriginalDashboard = () => {  const [data, setData] = useState({
         },
         fuel: {
           totalCost: totalFuelCost,
-          totalGallons: Math.round(totalGallons),
+          totalLiters: Math.round(totalLiters),
           avgMPG: Math.round(avgMPG * 10) / 10,
           costPerMile: Math.round(avgCostPerMile * 100) / 100
         },
@@ -1480,7 +1480,7 @@ const OriginalDashboard = () => {  const [data, setData] = useState({
                     {formatCurrency(data.fuel.costPerMile)}/mile
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                    {data.fuel.totalGallons} gallons • {formatCurrency(data.fuel.totalCost)}
+                    {data.fuel.totalLiters} liters • {formatCurrency(data.fuel.totalCost)}
                     </p>
                 </CardContent>
             </Card>

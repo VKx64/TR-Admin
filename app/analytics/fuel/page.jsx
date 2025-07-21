@@ -14,7 +14,7 @@ import pb from '@/services/pocketbase';
 
 const FuelAnalytics = () => {
   const [data, setData] = useState({
-    fuel: { totalCost: 0, totalGallons: 0, avgMPG: 0, costPerMile: 0 },
+    fuel: { totalCost: 0, totalLiters: 0, avgMPG: 0, costPerMile: 0 },
     charts: {
       fuelTrend: [],
       costBreakdown: []
@@ -31,15 +31,6 @@ const FuelAnalytics = () => {
         trend: 'increasing',
         confidence: 0,
         dailyAverage: 0
-      },
-      fuelPrice: {
-        predictedToday: 0,
-        predictedThisMonth: 0,
-        predictedThisYear: 0,
-        predictedNextYear: 0,
-        trend: 'increasing',
-        confidence: 0,
-        currentAvgPrice: 0
       },
       costProjection: {
         today: 0,
@@ -87,7 +78,7 @@ const FuelAnalytics = () => {
       const processFuelData = () => {
         const totalCost = fuelRecords.reduce((sum, record) =>
           sum + (record.fuel_amount * record.fuel_price), 0);
-        const totalGallons = fuelRecords.reduce((sum, record) =>
+        const totalLiters = fuelRecords.reduce((sum, record) =>
           sum + record.fuel_amount, 0);
 
         // Calculate MPG
@@ -119,7 +110,7 @@ const FuelAnalytics = () => {
 
         return {
           totalCost,
-          totalGallons,
+          totalLiters,
           avgMPG,
           costPerMile
         };
@@ -135,13 +126,13 @@ const FuelAnalytics = () => {
             monthlyData[month] = {
               month,
               cost: 0,
-              gallons: 0,
+              liters: 0,
               transactions: 0
             };
           }
 
           monthlyData[month].cost += record.fuel_amount * record.fuel_price;
-          monthlyData[month].gallons += record.fuel_amount;
+          monthlyData[month].liters += record.fuel_amount;
           monthlyData[month].transactions++;
         });
 
@@ -237,20 +228,11 @@ const FuelAnalytics = () => {
             confidence: 0.75,
             dailyAverage: avgDailyConsumption
           },
-          fuelPrice: {
-            predictedToday: avgFuelPrice,
-            predictedThisMonth: avgFuelPrice * 1.02,
-            predictedThisYear: avgFuelPrice * 1.08,
-            predictedNextYear: avgFuelPrice * 1.15,
-            trend: 'increasing',
-            confidence: 0.65,
-            currentAvgPrice: avgFuelPrice
-          },
           costProjection: {
             today: avgDailyConsumption * avgFuelPrice,
-            thisMonth: avgDailyConsumption * 30 * avgFuelPrice * 1.02,
-            thisYear: avgDailyConsumption * 365 * avgFuelPrice * 1.08,
-            nextYear: avgDailyConsumption * 365 * avgFuelPrice * 1.15
+            thisMonth: avgDailyConsumption * 30 * avgFuelPrice,
+            thisYear: avgDailyConsumption * 365 * avgFuelPrice,
+            nextYear: avgDailyConsumption * 365 * avgFuelPrice * 1.05
           }
         };
       };
@@ -360,7 +342,7 @@ const FuelAnalytics = () => {
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(data.fuel.totalCost)}</div>
             <p className="text-xs text-muted-foreground">
-              {data.fuel.totalGallons.toFixed(1)} gallons consumed
+              {data.fuel.totalLiters.toFixed(1)} liters consumed
             </p>
           </CardContent>
         </Card>
@@ -393,13 +375,13 @@ const FuelAnalytics = () => {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Predicted Monthly Cost</CardTitle>
+            <CardTitle className="text-sm font-medium">Daily Consumption</CardTitle>
             <Icon icon="mdi:trending-up" className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCurrency(data.forecasting.costProjection.thisMonth)}</div>
+            <div className="text-2xl font-bold">{data.forecasting.fuelConsumption.dailyAverage.toFixed(1)}L</div>
             <p className="text-xs text-muted-foreground">
-              Based on current trends
+              Fleet average per day
             </p>
           </CardContent>
         </Card>
@@ -420,7 +402,7 @@ const FuelAnalytics = () => {
                   <XAxis dataKey="month" />
                   <YAxis />
                   <ChartTooltip content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="gallons" stroke="var(--color-fuel)" strokeWidth={2} />
+                  <Line type="monotone" dataKey="liters" stroke="var(--color-fuel)" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </ChartContainer>
@@ -451,43 +433,29 @@ const FuelAnalytics = () => {
       {/* Forecasting */}
       <Card>
         <CardHeader>
-          <CardTitle>Fuel Forecasting</CardTitle>
-          <CardDescription>Predictions based on historical data and trends</CardDescription>
+          <CardTitle>Fuel Consumption Forecasting</CardTitle>
+          <CardDescription>Consumption predictions based on historical data and trends</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
               <h4 className="font-semibold">Consumption Forecast</h4>
               <div className="space-y-1">
                 <div className="flex justify-between text-sm">
                   <span>Today:</span>
-                  <span>{data.forecasting.fuelConsumption.predictedToday.toFixed(1)} gal</span>
+                  <span>{data.forecasting.fuelConsumption.predictedToday.toFixed(1)} L</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>This Month:</span>
-                  <span>{data.forecasting.fuelConsumption.predictedThisMonth.toFixed(0)} gal</span>
+                  <span>{data.forecasting.fuelConsumption.predictedThisMonth.toFixed(0)} L</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>This Year:</span>
-                  <span>{data.forecasting.fuelConsumption.predictedThisYear.toFixed(0)} gal</span>
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <h4 className="font-semibold">Price Forecast</h4>
-              <div className="space-y-1">
-                <div className="flex justify-between text-sm">
-                  <span>Current Avg:</span>
-                  <span>${data.forecasting.fuelPrice.currentAvgPrice.toFixed(2)}/gal</span>
+                  <span>{data.forecasting.fuelConsumption.predictedThisYear.toFixed(0)} L</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span>Next Month:</span>
-                  <span>${data.forecasting.fuelPrice.predictedThisMonth.toFixed(2)}/gal</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span>Next Year:</span>
-                  <span>${data.forecasting.fuelPrice.predictedNextYear.toFixed(2)}/gal</span>
+                  <span>Daily Average:</span>
+                  <span>{data.forecasting.fuelConsumption.dailyAverage.toFixed(1)} L</span>
                 </div>
               </div>
             </div>
@@ -506,6 +474,12 @@ const FuelAnalytics = () => {
                 <div className="flex justify-between text-sm">
                   <span>This Year:</span>
                   <span>{formatCurrency(data.forecasting.costProjection.thisYear)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span>Trend:</span>
+                  <span className={`capitalize ${data.forecasting.fuelConsumption.trend === 'increasing' ? 'text-red-600' : 'text-green-600'}`}>
+                    {data.forecasting.fuelConsumption.trend}
+                  </span>
                 </div>
               </div>
             </div>
