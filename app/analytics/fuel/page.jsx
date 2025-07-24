@@ -62,7 +62,7 @@ const FuelAnalytics = () => {
 
       // Fetch fuel records
       const fuelRecords = await pb.collection('truck_fuel').getFullList({
-        expand: 'truck_id',
+        expand: 'truck_id,truck_id.users_id',
         sort: '-created',
         filter: selectedTruck !== 'all' ? `truck_id="${selectedTruck}"` : '',
         requestKey: null
@@ -77,36 +77,44 @@ const FuelAnalytics = () => {
       // Process fuel data
       const processFuelData = () => {
         const totalCost = fuelRecords.reduce((sum, record) =>
-          sum + (record.fuel_amount * record.fuel_price), 0);
+          sum + ((record.fuel_amount || 0) * (record.fuel_price || 0)), 0);
         const totalLiters = fuelRecords.reduce((sum, record) =>
-          sum + record.fuel_amount, 0);
+          sum + (record.fuel_amount || 0), 0);
 
-        // Calculate MPG
-        let totalMPG = 0;
-        let mpgCount = 0;
+        // Calculate overall fleet MPG more accurately
+        let totalDistance = 0;
+        let totalFuelForDistance = 0;
 
+        // Group by truck and calculate distances
+        const truckGroups = {};
         fuelRecords.forEach(record => {
-          if (record.odometer_reading) {
-            // Find previous record for same truck
-            const prevRecord = fuelRecords.find(r =>
-              r.truck_id === record.truck_id &&
-              r.created < record.created &&
-              r.odometer_reading
-            );
+          if (!truckGroups[record.truck_id]) {
+            truckGroups[record.truck_id] = [];
+          }
+          truckGroups[record.truck_id].push(record);
+        });
 
-            if (prevRecord) {
-              const distance = record.odometer_reading - prevRecord.odometer_reading;
-              const mpg = distance / record.fuel_amount;
-              if (mpg > 0 && mpg < 50) { // Reasonable MPG range
-                totalMPG += mpg;
-                mpgCount++;
-              }
+        // Calculate distances for each truck
+        Object.values(truckGroups).forEach(truckRecords => {
+          const sortedRecords = truckRecords
+            .filter(r => r.odometer_reading && r.fuel_amount)
+            .sort((a, b) => new Date(a.created) - new Date(b.created));
+
+          for (let i = 1; i < sortedRecords.length; i++) {
+            const current = sortedRecords[i];
+            const previous = sortedRecords[i - 1];
+
+            const distance = current.odometer_reading - previous.odometer_reading;
+            if (distance > 1 && distance < 2000) { // Reasonable distance range
+              totalDistance += distance;
+              totalFuelForDistance += current.fuel_amount;
             }
           }
         });
 
-        const avgMPG = mpgCount > 0 ? totalMPG / mpgCount : 0;
-        const costPerMile = totalMPG > 0 ? totalCost / totalMPG : 0;
+        // Calculate fleet average MPG (km/L to MPG conversion)
+        const avgMPG = totalFuelForDistance > 0 ? (totalDistance / totalFuelForDistance) * 2.35 : 0;
+        const costPerMile = totalDistance > 0 ? totalCost / (totalDistance * 0.621371) : 0; // Convert km to miles
 
         return {
           totalCost,
@@ -118,97 +126,142 @@ const FuelAnalytics = () => {
 
       // Process fuel trends
       const processFuelTrends = () => {
+        if (fuelRecords.length === 0) {
+          // Generate some sample data for the last 6 months if no records exist
+          const months = [];
+          for (let i = 5; i >= 0; i--) {
+            const date = subMonths(new Date(), i);
+            months.push({
+              month: format(date, 'yyyy-MM'),
+              monthLabel: format(date, 'MMM yyyy'),
+              cost: 0,
+              liters: 0,
+              transactions: 0
+            });
+          }
+          return months;
+        }
+
         const monthlyData = {};
 
         fuelRecords.forEach(record => {
-          const month = format(new Date(record.created), 'yyyy-MM');
-          if (!monthlyData[month]) {
-            monthlyData[month] = {
-              month,
+          const recordDate = new Date(record.created);
+          const monthKey = format(recordDate, 'yyyy-MM');
+          const monthLabel = format(recordDate, 'MMM yyyy');
+
+          if (!monthlyData[monthKey]) {
+            monthlyData[monthKey] = {
+              month: monthKey,
+              monthLabel: monthLabel,
               cost: 0,
               liters: 0,
               transactions: 0
             };
           }
 
-          monthlyData[month].cost += record.fuel_amount * record.fuel_price;
-          monthlyData[month].liters += record.fuel_amount;
-          monthlyData[month].transactions++;
+          const cost = (record.fuel_amount || 0) * (record.fuel_price || 0);
+          monthlyData[monthKey].cost += cost;
+          monthlyData[monthKey].liters += (record.fuel_amount || 0);
+          monthlyData[monthKey].transactions++;
         });
 
-        return Object.values(monthlyData)
-          .sort((a, b) => a.month.localeCompare(b.month))
-          .slice(-12); // Last 12 months
+        // Get the last 12 months of data, fill missing months with 0
+        const result = [];
+        for (let i = 11; i >= 0; i--) {
+          const date = subMonths(new Date(), i);
+          const monthKey = format(date, 'yyyy-MM');
+          const monthLabel = format(date, 'MMM yyyy');
+
+          if (monthlyData[monthKey]) {
+            result.push(monthlyData[monthKey]);
+          } else {
+            result.push({
+              month: monthKey,
+              monthLabel: monthLabel,
+              cost: 0,
+              liters: 0,
+              transactions: 0
+            });
+          }
+        }
+
+        return result;
       };
 
       // Process MPG analytics
       const processMPGAnalytics = () => {
         const vehicleTypes = {};
-        const topPerformers = [];
-        const poorPerformers = [];
+        const allTruckData = [];
 
         trucks.forEach(truck => {
-          const truckFuelRecords = fuelRecords.filter(r => r.truck_id === truck.id);
+          const truckFuelRecords = fuelRecords
+            .filter(r => r.truck_id === truck.id)
+            .sort((a, b) => new Date(a.created) - new Date(b.created));
 
           if (truckFuelRecords.length > 1) {
-            let totalMPG = 0;
-            let mpgCount = 0;
+            let totalDistance = 0;
+            let totalFuel = 0;
+            let validCalculations = 0;
 
-            truckFuelRecords.forEach(record => {
-              if (record.odometer_reading) {
-                const prevRecord = truckFuelRecords.find(r =>
-                  r.created < record.created && r.odometer_reading
-                );
+            for (let i = 1; i < truckFuelRecords.length; i++) {
+              const currentRecord = truckFuelRecords[i];
+              const prevRecord = truckFuelRecords[i - 1];
 
-                if (prevRecord) {
-                  const distance = record.odometer_reading - prevRecord.odometer_reading;
-                  const mpg = distance / record.fuel_amount;
-                  if (mpg > 0 && mpg < 50) {
-                    totalMPG += mpg;
-                    mpgCount++;
-                  }
+              if (currentRecord.odometer_reading && prevRecord.odometer_reading && currentRecord.fuel_amount) {
+                const distance = currentRecord.odometer_reading - prevRecord.odometer_reading;
+
+                // Only consider reasonable distances (between 1km and 2000km)
+                if (distance > 1 && distance < 2000) {
+                  totalDistance += distance;
+                  totalFuel += currentRecord.fuel_amount;
+                  validCalculations++;
                 }
               }
-            });
+            }
 
-            if (mpgCount > 0) {
-              const avgMPG = totalMPG / mpgCount;
+            if (validCalculations > 0 && totalFuel > 0) {
+              // Calculate km per liter
+              const kmPerLiter = totalDistance / totalFuel;
+              // Convert to MPG (1 km/L ≈ 2.35 MPG)
+              const avgMPG = kmPerLiter * 2.35;
+
               const truckData = {
                 truckId: truck.id,
-                plateNumber: truck.plate_number,
-                truckType: truck.truck_type,
+                plateNumber: truck.plate_number || 'Unknown',
+                truckType: truck.truck_type || 'Unknown',
                 avgMPG: avgMPG
               };
 
+              allTruckData.push(truckData);
+
               // Group by vehicle type
-              if (!vehicleTypes[truck.truck_type]) {
-                vehicleTypes[truck.truck_type] = {
-                  type: truck.truck_type,
+              const truckType = truck.truck_type || 'Unknown';
+              if (!vehicleTypes[truckType]) {
+                vehicleTypes[truckType] = {
+                  type: truckType,
                   totalMPG: 0,
                   count: 0,
                   avgMPG: 0
                 };
               }
 
-              vehicleTypes[truck.truck_type].totalMPG += avgMPG;
-              vehicleTypes[truck.truck_type].count++;
-              vehicleTypes[truck.truck_type].avgMPG =
-                vehicleTypes[truck.truck_type].totalMPG / vehicleTypes[truck.truck_type].count;
-
-              // Add to performers arrays
-              if (avgMPG > 15) {
-                topPerformers.push(truckData);
-              } else if (avgMPG < 8) {
-                poorPerformers.push(truckData);
-              }
+              vehicleTypes[truckType].totalMPG += avgMPG;
+              vehicleTypes[truckType].count++;
+              vehicleTypes[truckType].avgMPG =
+                vehicleTypes[truckType].totalMPG / vehicleTypes[truckType].count;
             }
           }
         });
 
+        // Sort all trucks by MPG and categorize
+        const sortedTrucks = allTruckData.sort((a, b) => b.avgMPG - a.avgMPG);
+        const topPerformers = sortedTrucks.slice(0, 5);
+        const poorPerformers = sortedTrucks.slice(-5).reverse();
+
         return {
           byVehicleType: Object.values(vehicleTypes),
-          topPerformers: topPerformers.sort((a, b) => b.avgMPG - a.avgMPG).slice(0, 5),
-          poorPerformers: poorPerformers.sort((a, b) => a.avgMPG - b.avgMPG).slice(0, 5)
+          topPerformers: topPerformers,
+          poorPerformers: poorPerformers
         };
       };
 
@@ -242,6 +295,12 @@ const FuelAnalytics = () => {
       const mpgAnalytics = processMPGAnalytics();
       const forecasting = processForecasting();
 
+      // Debug logging
+      console.log('Fuel Records:', fuelRecords.length);
+      console.log('Trucks:', trucks.length);
+      console.log('MPG Analytics:', mpgAnalytics);
+      console.log('Fuel Trends:', fuelTrends);
+
       setData({
         fuel: fuelData,
         charts: {
@@ -252,7 +311,7 @@ const FuelAnalytics = () => {
           ]
         },
         fuelLogs: {
-          recentEntries: fuelRecords.slice(0, 10)
+          recentEntries: fuelRecords.slice(0, 25) // Show more records
         },
         forecasting,
         mpgAnalytics
@@ -396,15 +455,36 @@ const FuelAnalytics = () => {
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={data.charts.fuelTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Line type="monotone" dataKey="liters" stroke="var(--color-fuel)" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+              {data.charts.fuelTrend?.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={data.charts.fuelTrend}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="monthLabel"
+                      tick={{ fontSize: 12 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                    />
+                    <YAxis />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Line
+                      type="monotone"
+                      dataKey="liters"
+                      stroke="var(--color-fuel)"
+                      strokeWidth={2}
+                      name="Fuel (L)"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <p>No fuel trend data available</p>
+                    <p className="text-sm">Add fuel records to see consumption trends</p>
+                  </div>
+                </div>
+              )}
             </ChartContainer>
           </CardContent>
         </Card>
@@ -416,15 +496,34 @@ const FuelAnalytics = () => {
           </CardHeader>
           <CardContent>
             <ChartContainer config={chartConfig} className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data.mpgAnalytics.byVehicleType}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="type" />
-                  <YAxis />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="avgMPG" fill="var(--color-mpg)" />
-                </BarChart>
-              </ResponsiveContainer>
+              {data.mpgAnalytics.byVehicleType?.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.mpgAnalytics.byVehicleType}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="type"
+                      tick={{ fontSize: 12 }}
+                      angle={-45}
+                      textAnchor="end"
+                      height={60}
+                    />
+                    <YAxis />
+                    <ChartTooltip content={<ChartTooltipContent />} />
+                    <Bar
+                      dataKey="avgMPG"
+                      fill="var(--color-mpg)"
+                      name="Average MPG"
+                    />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-muted-foreground">
+                  <div className="text-center">
+                    <p>No MPG data available</p>
+                    <p className="text-sm">Fuel records with odometer readings are needed</p>
+                  </div>
+                </div>
+              )}
             </ChartContainer>
           </CardContent>
         </Card>
@@ -487,6 +586,82 @@ const FuelAnalytics = () => {
         </CardContent>
       </Card>
 
+      {/* Fuel Records Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Fuel Records</CardTitle>
+          <CardDescription>Detailed list of all fuel transactions with truck and driver information</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="space-y-2">
+              <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+            </div>
+          ) : (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date & Time</TableHead>
+                    <TableHead>Truck Plate</TableHead>
+                    <TableHead>Driver</TableHead>
+                    <TableHead className="text-right">Fuel Amount</TableHead>
+                    <TableHead className="text-right">Price per Liter</TableHead>
+                    <TableHead className="text-right">Total Cost</TableHead>
+                    <TableHead className="text-right">Odometer</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {data.fuelLogs.recentEntries?.length ? (
+                    data.fuelLogs.recentEntries.map((record) => (
+                      <TableRow key={record.id}>
+                        <TableCell className="font-medium">
+                          {new Date(record.created).toLocaleDateString('en-US', {
+                            year: 'numeric',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </TableCell>
+                        <TableCell className="font-medium">
+                          {record.expand?.truck_id?.plate_number || 'N/A'}
+                        </TableCell>
+                        <TableCell>
+                          {record.expand?.truck_id?.expand?.users_id?.username || 'Unassigned'}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {record.fuel_amount?.toFixed(2) || '0.00'} L
+                        </TableCell>
+                        <TableCell className="text-right">
+                          ${record.fuel_price?.toFixed(2) || '0.00'}
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          ${((record.fuel_amount || 0) * (record.fuel_price || 0)).toFixed(2)}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          {record.odometer_reading?.toLocaleString() || 'N/A'} km
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  ) : (
+                    <TableRow>
+                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">
+                        No fuel records found.
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Performance Tables */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
@@ -504,13 +679,21 @@ const FuelAnalytics = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.mpgAnalytics.topPerformers.map((truck, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{truck.plateNumber}</TableCell>
-                    <TableCell>{truck.truckType}</TableCell>
-                    <TableCell>{truck.avgMPG.toFixed(1)}</TableCell>
+                {data.mpgAnalytics.topPerformers?.length > 0 ? (
+                  data.mpgAnalytics.topPerformers.map((truck, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">{truck.plateNumber}</TableCell>
+                      <TableCell>{truck.truckType}</TableCell>
+                      <TableCell className="text-green-600">{truck.avgMPG.toFixed(1)}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                      No performance data available. Need more fuel records with odometer readings.
+                    </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -531,13 +714,21 @@ const FuelAnalytics = () => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {data.mpgAnalytics.poorPerformers.map((truck, index) => (
-                  <TableRow key={index}>
-                    <TableCell className="font-medium">{truck.plateNumber}</TableCell>
-                    <TableCell>{truck.truckType}</TableCell>
-                    <TableCell className="text-red-600">{truck.avgMPG.toFixed(1)}</TableCell>
+                {data.mpgAnalytics.poorPerformers?.length > 0 ? (
+                  data.mpgAnalytics.poorPerformers.map((truck, index) => (
+                    <TableRow key={index}>
+                      <TableCell className="font-medium">{truck.plateNumber}</TableCell>
+                      <TableCell>{truck.truckType}</TableCell>
+                      <TableCell className="text-red-600">{truck.avgMPG.toFixed(1)}</TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="h-24 text-center text-muted-foreground">
+                      No performance data available. Need more fuel records with odometer readings.
+                    </TableCell>
                   </TableRow>
-                ))}
+                )}
               </TableBody>
             </Table>
           </CardContent>
