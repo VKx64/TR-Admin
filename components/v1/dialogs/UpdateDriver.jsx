@@ -79,8 +79,8 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
       phone: "",
       driver_license_number: "",
       driver_license_code: "",
-      avatar: null, // Add avatar default value
-      license_expiration_date: "", // Added license expiration date
+      avatar: null,
+      license_expiration_date: "",
     },
   });
 
@@ -98,7 +98,7 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
       // Get driver details data if available
       const driverDetails = driverData.expand?.driver_details_id || {};
 
-      // Reset the form with the driver data
+      // Reset the form with the driver data, ensuring all values are strings (not undefined)
       form.reset({
         username: driverData.username || "",
         email: driverData.email || "",
@@ -107,7 +107,7 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
         phone: driverDetails.phone || "",
         driver_license_number: driverDetails.driver_license_number || "",
         driver_license_code: driverDetails.driver_license_code || "",
-        license_expiration_date: driverDetails.license_expiration_date ? new Date(driverDetails.license_expiration_date).toLocaleDateString('sv-SE').replace(/-/g, '/') : "", // Format to YYYY/MM/DD for input
+        license_expiration_date: driverDetails.license_expiration_date ? new Date(driverDetails.license_expiration_date).toLocaleDateString('sv-SE').replace(/-/g, '/') : "",
       });
 
       // Set license image preview if available

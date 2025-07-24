@@ -62,3 +62,31 @@ export async function deleteTruck(truck_id) {
     return false
   }
 }
+
+export async function archiveTruck(truckId) {
+  try {
+    await pb.collection("trucks").update(truckId, {
+      is_archive: true
+    }, {
+      requestKey: null
+    });
+    return true;
+  } catch (error) {
+    console.error("Error archiving truck:", error);
+    return false;
+  }
+}
+
+export async function unarchiveTruck(truckId) {
+  try {
+    await pb.collection("trucks").update(truckId, {
+      is_archive: false
+    }, {
+      requestKey: null
+    });
+    return true;
+  } catch (error) {
+    console.error("Error unarchiving truck:", error);
+    return false;
+  }
+}

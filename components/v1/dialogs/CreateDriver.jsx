@@ -625,7 +625,7 @@ const CreateDriver = () => {
                         <FormLabel>Region</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value || ""}
                           disabled={loadingRegions}
                         >
                           <FormControl>
@@ -657,7 +657,7 @@ const CreateDriver = () => {
                         <FormLabel>Province</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value || ""}
                           disabled={loadingProvinces || !form.watch('region')}
                         >
                           <FormControl>
@@ -693,7 +693,7 @@ const CreateDriver = () => {
                         <FormLabel>City/Municipality</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value || ""}
                           disabled={loadingCities || !form.watch('province')}
                         >
                           <FormControl>
@@ -729,7 +729,7 @@ const CreateDriver = () => {
                         <FormLabel>Barangay</FormLabel>
                         <Select
                           onValueChange={field.onChange}
-                          defaultValue={field.value}
+                          value={field.value || ""}
                           disabled={loadingBarangays || !form.watch('city')}
                         >
                           <FormControl>

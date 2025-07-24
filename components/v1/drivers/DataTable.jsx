@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import ReadDriver from "@/components/v1/dialogs/ReadDriver";
 import UpdateDriver from "@/components/v1/dialogs/UpdateDriver";
-import { deleteDriver } from "@/services/drivers";
+import { archiveDriver, unarchiveDriver } from "@/services/drivers";
 
 import {
   useReactTable,
@@ -70,6 +70,7 @@ const ImageCell = ({ row }) => {
 const ActionsCell = ({ row, meta }) => {
   const driverId = row.original.id;
   const refreshData = meta?.refreshData;
+  const showArchived = meta?.showArchived;
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
@@ -79,7 +80,7 @@ const ActionsCell = ({ row, meta }) => {
   // Function to handle the archive confirmation
   const handleArchiveConfirm = async () => {
     try {
-      const success = await deleteDriver(driverId);
+      const success = await archiveDriver(driverId);
       if (success) {
         toast.success("Driver archived successfully.");
         // Call refreshData if it exists to refresh the table
@@ -97,6 +98,27 @@ const ActionsCell = ({ row, meta }) => {
     }
   };
 
+  // Function to handle the unarchive confirmation
+  const handleUnarchiveConfirm = async () => {
+    try {
+      const success = await unarchiveDriver(driverId);
+      if (success) {
+        toast.success("Driver unarchived successfully.");
+        // Call refreshData if it exists to refresh the table
+        if (typeof refreshData === "function") {
+          refreshData();
+        } else {
+          console.log("Driver unarchived, please refresh the list manually.");
+        }
+      } else {
+        toast.error("Failed to unarchive driver.");
+      }
+    } catch (error) {
+      toast.error("Failed to unarchive driver.");
+      console.error("Unarchive error:", error);
+    }
+  };
+
   return (
     <div className="flex gap-2">
       <Button size="sm" variant="outline" onClick={handleView}>
@@ -105,27 +127,54 @@ const ActionsCell = ({ row, meta }) => {
       <Button size="sm" variant="outline" onClick={handleEdit}>
         Edit
       </Button>
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button size="sm" variant="outline" className="bg-amber-500 hover:bg-amber-600 text-white border-amber-500 hover:border-amber-600">
-            Archive
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to archive this driver?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action will archive the driver record. Archived drivers can be restored later if needed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleArchiveConfirm}>
-              Archive Driver
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+
+      {showArchived ? (
+        // Show Unarchive button for archived drivers
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="outline" className="bg-green-500 hover:bg-green-600 text-white border-green-500 hover:border-green-600">
+              Unarchive
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to unarchive this driver?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action will restore the driver record to active status.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUnarchiveConfirm}>
+                Unarchive Driver
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : (
+        // Show Archive button for active drivers
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="outline" className="bg-amber-500 hover:bg-amber-600 text-white border-amber-500 hover:border-amber-600">
+              Archive
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to archive this driver?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action will archive the driver record. Archived drivers can be restored later if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleArchiveConfirm}>
+                Archive Driver
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       {/* ReadDriver Dialog */}
       <ReadDriver
@@ -145,7 +194,7 @@ const ActionsCell = ({ row, meta }) => {
   );
 };
 
-const DataTable = ({ drivers = [], refreshData }) => {
+const DataTable = ({ drivers = [], refreshData, showArchived = false }) => {
   const columns = React.useMemo(
     () => [
       {
@@ -176,10 +225,10 @@ const DataTable = ({ drivers = [], refreshData }) => {
       {
         id: "actions",
         header: "Actions",
-        cell: (props) => <ActionsCell {...props} meta={{ refreshData }} />,
+        cell: (props) => <ActionsCell {...props} meta={{ refreshData, showArchived }} />,
       },
     ],
-    [refreshData]
+    [refreshData, showArchived]
   );
 
   const table = useReactTable({

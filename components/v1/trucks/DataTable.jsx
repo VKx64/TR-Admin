@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { deleteTruck } from "@/services/trucks";
+import { deleteTruck, archiveTruck, unarchiveTruck } from "@/services/trucks";
 import { toast } from "sonner";
 import ReadTruck from "@/components/v1/dialogs/ReadTruck";
 import UpdateTruck from "@/components/v1/dialogs/UpdateTruck";
@@ -72,6 +72,7 @@ const ImageCell = ({ row }) => {
 const ActionsCell = ({ row, meta }) => {
   const truckId = row.original.id;
   const refreshData = meta?.refreshData;
+  const showArchived = meta?.showArchived;
   const [isViewDialogOpen, setIsViewDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
@@ -80,7 +81,7 @@ const ActionsCell = ({ row, meta }) => {
 
   // Function to handle the archive confirmation
   const handleArchiveConfirm = async () => {
-    const success = await deleteTruck(truckId);
+    const success = await archiveTruck(truckId);
     if (success) {
       toast.success("Truck archived successfully.");
       // Call refreshData if it exists to refresh the table
@@ -94,6 +95,22 @@ const ActionsCell = ({ row, meta }) => {
     }
   };
 
+  // Function to handle the unarchive confirmation
+  const handleUnarchiveConfirm = async () => {
+    const success = await unarchiveTruck(truckId);
+    if (success) {
+      toast.success("Truck unarchived successfully.");
+      // Call refreshData if it exists to refresh the table
+      if (typeof refreshData === "function") {
+        refreshData();
+      } else {
+        console.log("Truck unarchived, please refresh the list manually.");
+      }
+    } else {
+      toast.error("Failed to unarchive truck.");
+    }
+  };
+
   return (
     <div className="flex gap-2">
       <Button size="sm" variant="outline" onClick={handleView}>
@@ -102,28 +119,54 @@ const ActionsCell = ({ row, meta }) => {
       <Button size="sm" variant="outline" onClick={handleEdit}>
         Edit
       </Button>
-      <AlertDialog>
-        <AlertDialogTrigger asChild>
-          <Button size="sm" variant="outline" className="bg-amber-500 hover:bg-amber-600 text-white border-amber-500 hover:border-amber-600">
-            Archive
-          </Button>
-        </AlertDialogTrigger>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure you want to archive this truck?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action will archive the truck record. Archived trucks can be restored later if needed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            {/* Call handleArchiveConfirm when Continue is clicked */}
-            <AlertDialogAction onClick={handleArchiveConfirm}>
-              Archive Truck
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+
+      {showArchived ? (
+        // Show Unarchive button for archived trucks
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="outline" className="bg-green-500 hover:bg-green-600 text-white border-green-500 hover:border-green-600">
+              Unarchive
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to unarchive this truck?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action will restore the truck record to active status.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleUnarchiveConfirm}>
+                Unarchive Truck
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      ) : (
+        // Show Archive button for active trucks
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button size="sm" variant="outline" className="bg-amber-500 hover:bg-amber-600 text-white border-amber-500 hover:border-amber-600">
+              Archive
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you sure you want to archive this truck?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action will archive the truck record. Archived trucks can be restored later if needed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleArchiveConfirm}>
+                Archive Truck
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
 
       {/* Integrate ReadTruck Dialog */}
       <ReadTruck
@@ -143,7 +186,7 @@ const ActionsCell = ({ row, meta }) => {
   );
 };
 
-const DataTable = ({ trucks = [], refreshData }) => {
+const DataTable = ({ trucks = [], refreshData, showArchived = false }) => {
   const columns = React.useMemo(
     () => [
       {
@@ -174,10 +217,10 @@ const DataTable = ({ trucks = [], refreshData }) => {
       {
         id: "actions",
         header: "Actions",
-        cell: (props) => <ActionsCell {...props} meta={{ refreshData }} />,
+        cell: (props) => <ActionsCell {...props} meta={{ refreshData, showArchived }} />,
       },
     ],
-    [refreshData]
+    [refreshData, showArchived]
   );
 
   const table = useReactTable({

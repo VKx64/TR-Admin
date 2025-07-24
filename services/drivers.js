@@ -88,27 +88,48 @@ export async function updateDriver(driverId, userData, driverDetailsData = {}, l
   }
 }
 
-export async function deleteDriver(driverId) {
+export async function archiveDriver(driverId) {
   try {
     // Get the driver to find related driver_details
     const driver = await pb.collection("users").getOne(driverId, {
       requestKey: null
     });
 
-    // If there are driver details, delete them first
+    // If there are driver details, archive them by setting is_archived to true
     if (driver.driver_details_id) {
-      await pb.collection("driver_details").delete(driver.driver_details_id, {
+      await pb.collection("driver_details").update(driver.driver_details_id, {
+        is_archived: true
+      }, {
         requestKey: null
       });
     }
 
-    // Delete the user record
-    await pb.collection("users").delete(driverId, {
-      requestKey: null
-    });
     return true;
   } catch (error) {
-    console.error("Error deleting driver:", error);
+    console.error("Error archiving driver:", error);
+    return false;
+  }
+}
+
+export async function unarchiveDriver(driverId) {
+  try {
+    // Get the driver to find related driver_details
+    const driver = await pb.collection("users").getOne(driverId, {
+      requestKey: null
+    });
+
+    // If there are driver details, unarchive them by setting is_archived to false
+    if (driver.driver_details_id) {
+      await pb.collection("driver_details").update(driver.driver_details_id, {
+        is_archived: false
+      }, {
+        requestKey: null
+      });
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Error unarchiving driver:", error);
     return false;
   }
 }

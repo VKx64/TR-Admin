@@ -14,7 +14,7 @@ import CreateTruck from "../dialogs/CreateTruck";
  * Header component for the truck management section
  * Provides search functionality, filtering, and truck creation
  */
-const Header = ({ onRefresh }) => {
+const Header = ({ onRefresh, showArchived, onToggleArchived }) => {
   // Truck types for filter dropdown
   const truckTypes = [
     { id: 'all', label: 'All Trucks' },
@@ -28,10 +28,23 @@ const Header = ({ onRefresh }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Icon icon='mingcute:bus-line' className="text-3xl text-primary"/>
-          <h1 className="text-2xl font-semibold">Truck Management</h1>
+          <h1 className="text-2xl font-semibold">
+            {showArchived ? "Archived Trucks" : "Truck Management"}
+          </h1>
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Archive Toggle */}
+          <Button
+            variant={showArchived ? "default" : "outline"}
+            onClick={onToggleArchived}
+            className="flex items-center gap-2"
+            title={showArchived ? "Show active trucks" : "Show archived trucks"}
+          >
+            <Icon icon={showArchived ? "mdi:archive-off" : "mdi:archive"} width="18" height="18" />
+            <span>{showArchived ? "Show Active" : "Show Archived"}</span>
+          </Button>
+
           {/* Search Bar */}
           <div className="relative">
             <Icon
