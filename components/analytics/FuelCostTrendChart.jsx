@@ -157,7 +157,7 @@ const FuelCostTrendChart = ({ selectedTruck = 'all', height = 400 }) => {
         intersect: false,
         callbacks: {
           label: function(context) {
-            return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
+            return `${context.dataset.label}: ₱${context.parsed.y.toFixed(2)}`;
           }
         }
       }
@@ -179,7 +179,7 @@ const FuelCostTrendChart = ({ selectedTruck = 'all', height = 400 }) => {
       y: {
         title: {
           display: true,
-          text: 'Cost ($)'
+          text: 'Cost (₱)'
         },
         beginAtZero: true
       }

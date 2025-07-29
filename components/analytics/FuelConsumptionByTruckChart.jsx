@@ -120,7 +120,7 @@ const FuelConsumptionByTruckChart = ({ height = 400 }) => {
             yAxisID: 'y'
           },
           {
-            label: 'Total Cost ($)',
+            label: 'Total Cost (₱)',
             data: costData,
             backgroundColor: colors.map(color => color.replace('60%, 0.8', '40%, 0.6')),
             borderColor: colors.map(color => color.replace('0.8)', '1)')),
@@ -163,7 +163,7 @@ const FuelConsumptionByTruckChart = ({ height = 400 }) => {
             if (context.datasetIndex === 0) {
               return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} L`;
             } else {
-              return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
+              return `${context.dataset.label}: ₱${context.parsed.y.toFixed(2)}`;
             }
           }
         }
@@ -192,7 +192,7 @@ const FuelConsumptionByTruckChart = ({ height = 400 }) => {
         position: 'right',
         title: {
           display: true,
-          text: 'Total Cost ($)'
+          text: 'Total Cost (₱)'
         },
         beginAtZero: true,
         grid: {

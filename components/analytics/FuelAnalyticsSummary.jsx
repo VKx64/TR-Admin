@@ -190,9 +190,9 @@ const FuelAnalyticsSummary = () => {
   }, []);
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-PH', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'PHP',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount);
@@ -310,7 +310,7 @@ const FuelAnalyticsSummary = () => {
                     {trendIndicator.sign}{Math.abs(summaryData.projections.weeklyTrend).toFixed(1)}% weekly trend
                   </div>
                   <div className="text-xs text-gray-500 mt-2">
-                    ${summaryData.currentMonth.avgPricePerLiter.toFixed(2)}/L avg price
+                    ₱{summaryData.currentMonth.avgPricePerLiter.toFixed(2)}/L avg price
                   </div>
                 </div>
               </div>

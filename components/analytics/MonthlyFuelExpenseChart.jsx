@@ -124,7 +124,7 @@ const MonthlyFuelExpenseChart = ({ height = 400 }) => {
         labels,
         datasets: [
           {
-            label: 'Monthly Fuel Expense ($)',
+            label: 'Monthly Fuel Expense (₱)',
             data: expenseData,
             backgroundColor: 'rgba(59, 130, 246, 0.8)',
             borderColor: 'rgba(59, 130, 246, 1)',
@@ -189,7 +189,7 @@ const MonthlyFuelExpenseChart = ({ height = 400 }) => {
         callbacks: {
           label: function(context) {
             if (context.datasetIndex === 0) {
-              return `${context.dataset.label}: $${context.parsed.y.toFixed(2)}`;
+              return `${context.dataset.label}: ₱${context.parsed.y.toFixed(2)}`;
             } else {
               return `${context.dataset.label}: ${context.parsed.y.toFixed(2)} L`;
             }
@@ -210,7 +210,7 @@ const MonthlyFuelExpenseChart = ({ height = 400 }) => {
         position: 'left',
         title: {
           display: true,
-          text: 'Expense ($)'
+          text: 'Expense (₱)'
         },
         beginAtZero: true
       },
@@ -294,7 +294,7 @@ const MonthlyFuelExpenseChart = ({ height = 400 }) => {
             <div className="text-center p-3 bg-blue-50 rounded-lg">
               <p className="text-sm text-gray-600">Total Expense</p>
               <p className="text-lg font-semibold text-blue-600">
-                ${monthlyStats.totalExpense.toFixed(2)}
+                ₱{monthlyStats.totalExpense.toFixed(2)}
               </p>
             </div>
             <div className="text-center p-3 bg-green-50 rounded-lg">
@@ -306,13 +306,13 @@ const MonthlyFuelExpenseChart = ({ height = 400 }) => {
             <div className="text-center p-3 bg-orange-50 rounded-lg">
               <p className="text-sm text-gray-600">Monthly Average</p>
               <p className="text-lg font-semibold text-orange-600">
-                ${monthlyStats.avgMonthlyExpense.toFixed(2)}
+                ₱{monthlyStats.avgMonthlyExpense.toFixed(2)}
               </p>
             </div>
             <div className="text-center p-3 bg-purple-50 rounded-lg">
               <p className="text-sm text-gray-600">Avg Price/Liter</p>
               <p className="text-lg font-semibold text-purple-600">
-                ${monthlyStats.avgPricePerLiter.toFixed(2)}
+                ₱{monthlyStats.avgPricePerLiter.toFixed(2)}
               </p>
             </div>
           </div>

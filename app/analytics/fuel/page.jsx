@@ -289,9 +289,9 @@ const FuelAnalytics = () => {
   }, [fetchFuelAnalytics]);
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-PH', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'PHP',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount);
@@ -548,10 +548,10 @@ const FuelAnalytics = () => {
                           {record.fuel_amount?.toFixed(2) || '0.00'} L
                         </TableCell>
                         <TableCell className="text-right">
-                          ${record.fuel_price?.toFixed(2) || '0.00'}
+                          ₱{record.fuel_price?.toFixed(2) || '0.00'}
                         </TableCell>
                         <TableCell className="text-right font-medium">
-                          ${((record.fuel_amount || 0) * (record.fuel_price || 0)).toFixed(2)}
+                          ₱{((record.fuel_amount || 0) * (record.fuel_price || 0)).toFixed(2)}
                         </TableCell>
                         <TableCell className="text-right">
                           {record.odometer_reading?.toLocaleString() || 'N/A'} km
