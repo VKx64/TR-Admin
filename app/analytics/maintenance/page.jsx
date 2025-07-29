@@ -26,8 +26,14 @@ const MaintenanceAnalytics = () => {
       vehiclesInMaintenance: [],
       issueProneVehicles: [],
       typeBreakdown: [],
-      costTrends: [],
-      scheduleCompliance: []
+      latestRecord: null,
+      requestStatus: {
+        pending: 0,
+        approved: 0,
+        completed: 0,
+        declined: 0,
+        latestRequest: null
+      }
     },
     charts: {
       maintenanceTrend: [],
@@ -117,32 +123,46 @@ const MaintenanceAnalytics = () => {
         };
       };
 
-      // Process maintenance trends
-      const processMaintenanceTrends = () => {
-        const monthlyData = {};
+      // Process latest maintenance record
+      const processLatestMaintenanceRecord = () => {
+        if (maintenanceRecords.length === 0) return null;
 
-        maintenanceRecords.forEach(record => {
-          const month = format(new Date(record.completion_date), 'yyyy-MM');
-          if (!monthlyData[month]) {
-            monthlyData[month] = {
-              month: format(new Date(record.completion_date), 'MMM yyyy'),
-              cost: 0,
-              count: 0,
-              avgCost: 0
-            };
+        const latest = maintenanceRecords[0]; // Records are sorted by -completion_date
+        return {
+          plateNumber: latest.expand?.truck?.plate_number || 'Unknown',
+          maintenanceType: latest.expand?.maintenance_type?.name || 'Unknown',
+          cost: latest.cost || 0,
+          completionDate: latest.completion_date,
+          odometerReading: latest.odometer_at_completion
+        };
+      };
+
+      // Process maintenance request status overview
+      const processRequestStatusOverview = () => {
+        const statusCounts = {
+          pending: 0,
+          approved: 0,
+          completed: 0,
+          declined: 0
+        };
+
+        maintenanceRequests.forEach(request => {
+          if (statusCounts.hasOwnProperty(request.status)) {
+            statusCounts[request.status]++;
           }
-
-          monthlyData[month].cost += record.cost || 0;
-          monthlyData[month].count++;
         });
 
-        // Calculate average cost per maintenance
-        Object.values(monthlyData).forEach(data => {
-          data.avgCost = data.count > 0 ? data.cost / data.count : 0;
-        });
+        const latestRequest = maintenanceRequests.length > 0 ? {
+          plateNumber: maintenanceRequests[0].expand?.truck?.plate_number || 'Unknown',
+          maintenanceType: maintenanceRequests[0].expand?.maintenance_type?.name || 'Unknown',
+          status: maintenanceRequests[0].status,
+          requestDate: maintenanceRequests[0].request_date
+        } : null;
 
-        return Object.values(monthlyData)
-          .sort((a, b) => a.month.localeCompare(b.month));
+        return {
+          ...statusCounts,
+          latestRequest
+        };
       };
 
       // Process issue-prone vehicles
@@ -231,24 +251,14 @@ const MaintenanceAnalytics = () => {
         }));
       };
 
-      // Process cost breakdown for pie chart
-      const processCostBreakdown = () => {
-        const typeBreakdown = processMaintenanceTypeBreakdown();
-        const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6'];
 
-        return typeBreakdown.slice(0, 5).map((type, index) => ({
-          name: type.type,
-          value: type.cost,
-          fill: colors[index % colors.length]
-        }));
-      };
 
       const maintenanceMetrics = processMaintenanceMetrics();
-      const maintenanceTrends = processMaintenanceTrends();
+      const latestRecord = processLatestMaintenanceRecord();
+      const requestStatus = processRequestStatusOverview();
       const issueProneVehicles = processIssueProneVehicles();
       const typeBreakdown = processMaintenanceTypeBreakdown();
       const vehiclesInMaintenance = processVehiclesInMaintenance();
-      const costBreakdown = processCostBreakdown();
 
       setData({
         maintenance: maintenanceMetrics,
@@ -256,11 +266,13 @@ const MaintenanceAnalytics = () => {
           vehiclesInMaintenance,
           issueProneVehicles,
           typeBreakdown,
-          costTrends: maintenanceTrends
+          latestRecord,
+          requestStatus
         },
         charts: {
-          maintenanceTrend: maintenanceTrends,
-          costBreakdown
+          // Keep empty for now since we removed the charts
+          maintenanceTrend: [],
+          costBreakdown: []
         }
       });
 
@@ -277,9 +289,9 @@ const MaintenanceAnalytics = () => {
   }, [fetchMaintenanceAnalytics]);
 
   const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-PH', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'PHP',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0
     }).format(amount);
@@ -354,7 +366,7 @@ const MaintenanceAnalytics = () => {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Total Cost</CardTitle>
-            <Icon icon="mdi:currency-usd" className="h-4 w-4 text-muted-foreground" />
+            <Icon icon="mdi:currency-php" className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(data.maintenance.totalCost)}</div>
@@ -417,57 +429,128 @@ const MaintenanceAnalytics = () => {
         </Card>
       </div>
 
-      {/* Charts */}
+      {/* Recent Maintenance Overview */}
       <div className="grid gap-4 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Maintenance Cost Trend</CardTitle>
-            <CardDescription>Monthly maintenance expenses</CardDescription>
+            <CardTitle>Recent Maintenance Record</CardTitle>
+            <CardDescription>Latest completed maintenance activity</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={data.charts.maintenanceTrend}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" />
-                  <YAxis yAxisId="left" />
-                  <YAxis yAxisId="right" orientation="right" />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar yAxisId="left" dataKey="cost" fill="var(--color-cost)" />
-                  <Line yAxisId="right" type="monotone" dataKey="count" stroke="var(--color-count)" strokeWidth={2} />
-                </ComposedChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+            {data.maintenanceAnalytics.latestRecord ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Truck</p>
+                    <p className="text-lg font-semibold">{data.maintenanceAnalytics.latestRecord.plateNumber}</p>
+                  </div>
+                  <Badge variant="outline">{data.maintenanceAnalytics.latestRecord.maintenanceType}</Badge>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Cost</p>
+                    <p className="text-xl font-bold text-green-600">
+                      {formatCurrency(data.maintenanceAnalytics.latestRecord.cost)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Completed</p>
+                    <p className="text-sm text-gray-800">
+                      {format(new Date(data.maintenanceAnalytics.latestRecord.completionDate), 'MMM dd, yyyy')}
+                    </p>
+                  </div>
+                </div>
+
+                {data.maintenanceAnalytics.latestRecord.odometerReading && (
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Odometer Reading</p>
+                    <p className="text-sm text-gray-800">
+                      {data.maintenanceAnalytics.latestRecord.odometerReading.toLocaleString()} km
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center h-32 text-gray-500">
+                <div className="text-center">
+                  <Icon icon="mdi:wrench" className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p className="text-sm">No maintenance records found</p>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader>
-            <CardTitle>Cost Breakdown by Type</CardTitle>
-            <CardDescription>Distribution of maintenance costs</CardDescription>
+            <CardTitle>Maintenance Request Status</CardTitle>
+            <CardDescription>Current maintenance request overview</CardDescription>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="h-[300px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={data.charts.costBreakdown}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                  >
-                    {data.charts.costBreakdown.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.fill} />
-                    ))}
-                  </Pie>
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                </PieChart>
-              </ResponsiveContainer>
-            </ChartContainer>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-yellow-50 p-3 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-yellow-800">Pending</span>
+                    <Icon icon="mdi:clock-outline" className="h-4 w-4 text-yellow-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-yellow-700">
+                    {data.maintenanceAnalytics.requestStatus.pending}
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 p-3 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-blue-800">Approved</span>
+                    <Icon icon="mdi:check-circle" className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-blue-700">
+                    {data.maintenanceAnalytics.requestStatus.approved}
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="bg-green-50 p-3 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-green-800">Completed</span>
+                    <Icon icon="mdi:check-all" className="h-4 w-4 text-green-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-green-700">
+                    {data.maintenanceAnalytics.requestStatus.completed}
+                  </p>
+                </div>
+
+                <div className="bg-red-50 p-3 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-red-800">Declined</span>
+                    <Icon icon="mdi:close-circle" className="h-4 w-4 text-red-600" />
+                  </div>
+                  <p className="text-2xl font-bold text-red-700">
+                    {data.maintenanceAnalytics.requestStatus.declined}
+                  </p>
+                </div>
+              </div>
+
+              {data.maintenanceAnalytics.latestRequest && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                  <p className="text-sm font-medium text-gray-600 mb-1">Latest Request</p>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-800">
+                      {data.maintenanceAnalytics.latestRequest.plateNumber} - {data.maintenanceAnalytics.latestRequest.maintenanceType}
+                    </span>
+                    <Badge variant={
+                      data.maintenanceAnalytics.latestRequest.status === 'pending' ? 'secondary' :
+                      data.maintenanceAnalytics.latestRequest.status === 'approved' ? 'default' :
+                      data.maintenanceAnalytics.latestRequest.status === 'completed' ? 'secondary' : 'destructive'
+                    }>
+                      {data.maintenanceAnalytics.latestRequest.status}
+                    </Badge>
+                  </div>
+                </div>
+              )}
+            </div>
           </CardContent>
         </Card>
       </div>
