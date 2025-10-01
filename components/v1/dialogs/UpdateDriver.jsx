@@ -20,6 +20,7 @@ import {
 import { Button } from "../../ui/button";
 import { Input } from "../../ui/input";
 import { Label } from "../../ui/label";
+import { Checkbox } from "../../ui/checkbox";
 import {
   Form,
   FormControl,
@@ -50,7 +51,7 @@ const driverFormSchema = z.object({
   address: z.string().optional(),
   phone: z.string().optional(),
   driver_license_number: z.string().optional(),
-  driver_license_code: z.string().optional(),
+  driver_license_code: z.array(z.string()).optional(),
   driver_license_picture: z.any().optional(),
   avatar: z.any().optional(), // Add avatar field to schema
   license_expiration_date: z.string().regex(/^\d{4}\/(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/, "Invalid date format. Use YYYY/MM/DD").optional().or(z.literal('')), // Added license expiration date
@@ -78,7 +79,7 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
       address: "",
       phone: "",
       driver_license_number: "",
-      driver_license_code: "",
+      driver_license_code: [],
       avatar: null,
       license_expiration_date: "",
     },
@@ -106,7 +107,10 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
         address: driverDetails.address || "",
         phone: driverDetails.phone || "",
         driver_license_number: driverDetails.driver_license_number || "",
-        driver_license_code: driverDetails.driver_license_code || "",
+        // Parse comma-separated string into array
+        driver_license_code: driverDetails.driver_license_code
+          ? driverDetails.driver_license_code.split(",").map(code => code.trim())
+          : [],
         license_expiration_date: driverDetails.license_expiration_date ? new Date(driverDetails.license_expiration_date).toLocaleDateString('sv-SE').replace(/-/g, '/') : "",
       });
 
@@ -191,7 +195,8 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
         address: data.address,
         phone: data.phone,
         driver_license_number: data.driver_license_number,
-        driver_license_code: data.driver_license_code,
+        // Join the array of license codes into a comma-separated string
+        driver_license_code: Array.isArray(data.driver_license_code) ? data.driver_license_code.join(", ") : "",
         license_expiration_date: data.license_expiration_date ? data.license_expiration_date.replace(/\//g, '-') : null, // Convert YYYY/MM/DD to YYYY-MM-DD for PocketBase
       };
 
@@ -336,16 +341,50 @@ const UpdateDriver = ({ isOpen, onClose, driverId, onSuccess }) => {
                     <FormField
                       control={form.control}
                       name="driver_license_code"
-                      render={({ field }) => (
+                      render={() => (
                         <FormItem>
-                          <FormLabel>License Class/Type</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Class A, CDL" {...field} />
-                          </FormControl>
+                          <div className="mb-4">
+                            <FormLabel className="text-base">License Codes</FormLabel>
+                            <FormDescription>
+                              Select all applicable license codes for this driver
+                            </FormDescription>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            {["A / A1", "B / B1 / B2", "C", "D", "BE", "CE"].map((code) => (
+                              <FormField
+                                key={code}
+                                control={form.control}
+                                name="driver_license_code"
+                                render={({ field }) => {
+                                  return (
+                                    <FormItem
+                                      key={code}
+                                      className="flex flex-row items-start space-x-3 space-y-0"
+                                    >
+                                      <FormControl>
+                                        <Checkbox
+                                          checked={field.value?.includes(code)}
+                                          onCheckedChange={(checked) => {
+                                            return checked
+                                              ? field.onChange([...field.value, code])
+                                              : field.onChange(
+                                                  field.value?.filter(
+                                                    (value) => value !== code
+                                                  )
+                                                )
+                                          }}
+                                        />
+                                      </FormControl>
+                                      <FormLabel className="text-sm font-normal">
+                                        {code}
+                                      </FormLabel>
+                                    </FormItem>
+                                  )
+                                }}
+                              />
+                            ))}
+                          </div>
                           <FormMessage />
-                          <FormDescription>
-                            Specify the driver license class or type (e.g., CDL, Class A, B, C, etc.)
-                          </FormDescription>
                         </FormItem>
                       )}
                     />

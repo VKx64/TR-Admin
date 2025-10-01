@@ -1,0 +1,7 @@
+services:
+  app:
+    image: node:lts
+    network_mode: host
+    volumes:
+      - .:/workspaces:cached
+    command: sleep infinity

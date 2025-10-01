@@ -1,0 +1,11 @@
+{
+  "name": "My Next.js App",
+  // Tells VS Code to use our Docker Compose file as the blueprint.
+  "dockerComposeFile": "../docker-compose.yml",
+  // Tells VS Code to attach to the service we named 'app' in the blueprint.
+  "service": "app",
+  "workspaceFolder": "/workspaces/",
+  // After creating the container, automatically run 'npm install' inside it.
+  "postCreateCommand": "npm install --legacy-peer-deps",
+  "remoteUser": "node"
+}

@@ -77,6 +77,9 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [activeTab, setActiveTab] = useState("basic");
+  const [showOtherTruckType, setShowOtherTruckType] = useState(false);
+  const [showOtherTireSize, setShowOtherTireSize] = useState(false);
+  const [showOtherManufacturer, setShowOtherManufacturer] = useState(false);
   const fileInputRef = useRef(null);
 
   // Form initialization
@@ -133,6 +136,30 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
         tire_psi: truckData.tire_psi || "",
         tire_lifespan: truckData.tire_lifespan || "",
       });
+
+      // Check if truck type is "Others" (not one of the predefined types)
+      const predefinedTypes = ["Flatbed", "Lowbed", "Primemover", "Stakebed", "Wingvan"];
+      if (truckData.truck_type && !predefinedTypes.includes(truckData.truck_type)) {
+        setShowOtherTruckType(true);
+      } else {
+        setShowOtherTruckType(false);
+      }
+
+      // Check if tire size is "Others" (not one of the predefined sizes)
+      const predefinedTireSizes = ["7.00R16", "8.25R16", "11.00R20", "11R22.5", "295/80R22.5", "315/80R22.5", "12.00R24", "12R22.5"];
+      if (truckData.tire_sizes && !predefinedTireSizes.includes(truckData.tire_sizes)) {
+        setShowOtherTireSize(true);
+      } else {
+        setShowOtherTireSize(false);
+      }
+
+      // Check if manufacturer is "Others" (not one of the predefined manufacturers)
+      const predefinedManufacturers = ["Mitsubishi", "Isuzu", "Hino", "Fuso"];
+      if (truckData.truck_manufacturer && !predefinedManufacturers.includes(truckData.truck_manufacturer)) {
+        setShowOtherManufacturer(true);
+      } else {
+        setShowOtherManufacturer(false);
+      }
 
       // Set image preview if available
       if (truckData.truck_image) {
@@ -286,13 +313,51 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Truck Type</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Pickup, Semi, Box" {...field} />
-                          </FormControl>
+                          <Select
+                            onValueChange={(value) => {
+                              if (value === "Others") {
+                                setShowOtherTruckType(true)
+                                field.onChange("")
+                              } else {
+                                setShowOtherTruckType(false)
+                                field.onChange(value)
+                              }
+                            }}
+                            value={showOtherTruckType ? "Others" : field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select truck type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="Flatbed">Flatbed</SelectItem>
+                              <SelectItem value="Lowbed">Lowbed</SelectItem>
+                              <SelectItem value="Primemover">Primemover</SelectItem>
+                              <SelectItem value="Stakebed">Stakebed</SelectItem>
+                              <SelectItem value="Wingvan">Wingvan</SelectItem>
+                              <SelectItem value="Others">Others</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+                    {showOtherTruckType && (
+                      <FormField
+                        control={form.control}
+                        name="truck_type"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Specify Truck Type</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Enter truck type" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     <FormField
                       control={form.control}
                       name="truck_year"
@@ -326,13 +391,50 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Manufacturer</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., Volvo" {...field} />
-                          </FormControl>
+                          <Select
+                            onValueChange={(value) => {
+                              if (value === "Others") {
+                                setShowOtherManufacturer(true)
+                                field.onChange("")
+                              } else {
+                                setShowOtherManufacturer(false)
+                                field.onChange(value)
+                              }
+                            }}
+                            value={showOtherManufacturer ? "Others" : field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select manufacturer" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="Mitsubishi">Mitsubishi</SelectItem>
+                              <SelectItem value="Isuzu">Isuzu</SelectItem>
+                              <SelectItem value="Hino">Hino</SelectItem>
+                              <SelectItem value="Fuso">Fuso</SelectItem>
+                              <SelectItem value="Others">Others</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+                    {showOtherManufacturer && (
+                      <FormField
+                        control={form.control}
+                        name="truck_manufacturer"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Specify Manufacturer</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Enter manufacturer" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     <FormField
                       control={form.control}
                       name="truck_engine_power"
@@ -407,13 +509,54 @@ const UpdateTruck = ({ isOpen, onClose, truckId, onSuccess }) => {
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Tire Sizes</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., 295/75R22.5" {...field} />
-                          </FormControl>
+                          <Select
+                            onValueChange={(value) => {
+                              if (value === "Others") {
+                                setShowOtherTireSize(true)
+                                field.onChange("")
+                              } else {
+                                setShowOtherTireSize(false)
+                                field.onChange(value)
+                              }
+                            }}
+                            value={showOtherTireSize ? "Others" : field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger>
+                                <SelectValue placeholder="Select tire size" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              <SelectItem value="7.00R16">7.00R16</SelectItem>
+                              <SelectItem value="8.25R16">8.25R16</SelectItem>
+                              <SelectItem value="11.00R20">11.00R20</SelectItem>
+                              <SelectItem value="11R22.5">11R22.5</SelectItem>
+                              <SelectItem value="295/80R22.5">295/80R22.5</SelectItem>
+                              <SelectItem value="315/80R22.5">315/80R22.5</SelectItem>
+                              <SelectItem value="12.00R24">12.00R24</SelectItem>
+                              <SelectItem value="12R22.5">12R22.5</SelectItem>
+                              <SelectItem value="Others">Others</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
+                    {showOtherTireSize && (
+                      <FormField
+                        control={form.control}
+                        name="tire_sizes"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Specify Tire Size</FormLabel>
+                            <FormControl>
+                              <Input placeholder="Enter tire size" {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
                     <FormField
                       control={form.control}
                       name="tire_psi"

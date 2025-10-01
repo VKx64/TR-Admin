@@ -38,6 +38,7 @@ import {
 } from '@/components/ui/tabs'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -51,10 +52,12 @@ import {
 // Zod schema for form validation
 const driverFormSchema = z.object({
   // User account fields
+  accountType: z.enum(["email", "phone"]).default("email"),
   firstName: z.string().min(1, "First name is required"),
   middleName: z.string().optional(),
   lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Please enter a valid email address"),
+  email: z.string().optional(),
+  phone: z.string().optional(),
   password: z.string().min(8, "Password must be at least 8 characters"),
   role: z.string().default("driver"),
   avatar: z.any().optional(),
@@ -66,20 +69,34 @@ const driverFormSchema = z.object({
   barangay: z.string().min(1, "Barangay is required"),
   postalCode: z.string().optional(),
   streetAddress: z.string().optional(),
-  phone: z.string().optional(),
   driver_license_number: z.string().min(1, "License number is required"),
-  driver_license_code: z.string().optional(),
+  driver_license_code: z.array(z.string()).optional(),
   driver_license_picture: z.any().optional(),
   license_expiration_date: z.string().regex(/^\d{4}\/(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/, "Invalid date format. Use YYYY/MM/DD").optional(),
   user_id: z.string().optional(),
-})
+}).refine((data) => {
+  // Validate that email is provided if accountType is "email"
+  if (data.accountType === "email") {
+    return data.email && z.string().email().safeParse(data.email).success;
+  }
+  // Validate that phone is provided if accountType is "phone"
+  if (data.accountType === "phone") {
+    return data.phone && data.phone.length > 0;
+  }
+  return true;
+}, {
+  message: "Please provide either a valid email or phone number",
+  path: ["email"], // This will show the error on the email field
+});
 
 // Default form values
 const defaultFormValues = {
+  accountType: "email",
   firstName: "",
   middleName: "",
   lastName: "",
   email: "",
+  phone: "",
   password: "",
   role: "driver",
   avatar: null,
@@ -90,9 +107,8 @@ const defaultFormValues = {
   barangay: "",
   postalCode: "",
   streetAddress: "",
-  phone: "",
   driver_license_number: "",
-  driver_license_code: "",
+  driver_license_code: [],
   driver_license_picture: null,
   license_expiration_date: "",
   user_id: "",
@@ -375,9 +391,16 @@ const CreateDriver = () => {
       driverDetailsData.append("postal_code", data.postalCode || "")
       driverDetailsData.append("street_address", data.streetAddress || "")
 
-      driverDetailsData.append("phone", data.phone || "")
+      // Add phone based on account type
+      if (data.accountType === "phone") {
+        driverDetailsData.append("phone", data.phone || "")
+      } else {
+        driverDetailsData.append("phone", "")
+      }
+
       driverDetailsData.append("driver_license_number", data.driver_license_number)
-      driverDetailsData.append("driver_license_code", data.driver_license_code || "")
+      // Join the array of license codes into a comma-separated string
+      driverDetailsData.append("driver_license_code", Array.isArray(data.driver_license_code) ? data.driver_license_code.join(", ") : "")
       if (data.license_expiration_date) {
         const formattedDate = data.license_expiration_date.replace(/\//g, '-');
         driverDetailsData.append("license_expiration_date", formattedDate)
@@ -402,7 +425,14 @@ const CreateDriver = () => {
       // Now create the user record with reference to driver details
       const userData = new FormData()
       userData.append("username", fullName)
-      userData.append("email", data.email)
+
+      // Add email or phone based on account type
+      if (data.accountType === "email") {
+        userData.append("email", data.email || "")
+      } else {
+        userData.append("email", "") // Empty email if using phone
+      }
+
       userData.append("password", data.password)
       userData.append("passwordConfirm", data.password)
       userData.append("role", "driver")
@@ -510,19 +540,72 @@ const CreateDriver = () => {
                   />
                 </div>
 
-                <FormField
-                  control={form.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Email</FormLabel>
-                      <FormControl>
-                        <Input placeholder="john.doe@example.com" type="email" {...field} />
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                {/* Account Type Selection */}
+                <div className="space-y-4">
+                  <FormLabel>Account Creation Method</FormLabel>
+                  <FormField
+                    control={form.control}
+                    name="accountType"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <div className="flex gap-4">
+                            <Button
+                              type="button"
+                              variant={field.value === "email" ? "default" : "outline"}
+                              className="flex-1"
+                              onClick={() => field.onChange("email")}
+                            >
+                              <Icon icon="mdi:email" className="mr-2" />
+                              Email
+                            </Button>
+                            <Button
+                              type="button"
+                              variant={field.value === "phone" ? "default" : "outline"}
+                              className="flex-1"
+                              onClick={() => field.onChange("phone")}
+                            >
+                              <Icon icon="mdi:phone" className="mr-2" />
+                              Phone Number
+                            </Button>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+
+                {/* Conditional Email or Phone Field */}
+                {form.watch("accountType") === "email" ? (
+                  <FormField
+                    control={form.control}
+                    name="email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Email *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="john.doe@example.com" type="email" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ) : (
+                  <FormField
+                    control={form.control}
+                    name="phone"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Phone Number *</FormLabel>
+                        <FormControl>
+                          <Input placeholder="+63 912 345 6789" type="tel" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
 
                 <FormField
                   control={form.control}
@@ -795,21 +878,6 @@ const CreateDriver = () => {
                       )}
                     />
                   </div>
-
-                  {/* Phone Number */}
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone Number</FormLabel>
-                        <FormControl>
-                          <Input placeholder="(123) 456-7890" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
                 </div>
               </TabsContent>
 
@@ -833,12 +901,46 @@ const CreateDriver = () => {
                     <FormField
                       control={form.control}
                       name="driver_license_code"
-                      render={({ field }) => (
+                      render={() => (
                         <FormItem>
-                          <FormLabel>License Code</FormLabel>
-                          <FormControl>
-                            <Input placeholder="e.g., CDL-A" {...field} />
-                          </FormControl>
+                          <div className="mb-4">
+                            <FormLabel className="text-base">License Codes</FormLabel>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            {["A / A1", "B / B1 / B2", "C", "D", "BE", "CE"].map((code) => (
+                              <FormField
+                                key={code}
+                                control={form.control}
+                                name="driver_license_code"
+                                render={({ field }) => {
+                                  return (
+                                    <FormItem
+                                      key={code}
+                                      className="flex flex-row items-start space-x-3 space-y-0"
+                                    >
+                                      <FormControl>
+                                        <Checkbox
+                                          checked={field.value?.includes(code)}
+                                          onCheckedChange={(checked) => {
+                                            return checked
+                                              ? field.onChange([...field.value, code])
+                                              : field.onChange(
+                                                  field.value?.filter(
+                                                    (value) => value !== code
+                                                  )
+                                                )
+                                          }}
+                                        />
+                                      </FormControl>
+                                      <FormLabel className="text-sm font-normal">
+                                        {code}
+                                      </FormLabel>
+                                    </FormItem>
+                                  )
+                                }}
+                              />
+                            ))}
+                          </div>
                           <FormMessage />
                         </FormItem>
                       )}
