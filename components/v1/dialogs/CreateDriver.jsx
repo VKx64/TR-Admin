@@ -474,7 +474,7 @@ const CreateDriver = () => {
       <DialogTrigger asChild>
         <Button>
           <Icon icon="mdi:account-plus" className="mr-2" />
-          Add Driver
+          Driver Registration
         </Button>
       </DialogTrigger>
 

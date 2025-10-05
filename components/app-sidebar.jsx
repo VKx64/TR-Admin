@@ -63,11 +63,11 @@ const data = {
       isActive: false,
       items: [
         {
-          title: "Vehicle Overview",
+          title: "Truck Management",
           url: "/trucks",
         },
         {
-          title: "Vehicle Assignment",
+          title: "Truck Assignment",
           url: "/assign_trucks",
         },
         {
@@ -77,10 +77,6 @@ const data = {
         {
           title: "GPS Tracking",
           url: "/gps",
-        },
-        {
-          title: "Add New Vehicle",
-          url: "/create_trucks",
         },
       ],
     },
@@ -94,10 +90,6 @@ const data = {
           title: "Driver Directory",
           url: "/drivers",
         },
-        {
-          title: "Route Planning",
-          url: "#",
-        },
       ],
     },
     {
@@ -107,15 +99,15 @@ const data = {
       isActive: false,
       items: [
         {
-          title: "Service Overview",
+          title: "Maintenance Overview",
           url: "/maintenance",
         },
         {
-          title: "Service Requests",
+          title: "Maintenance Requests",
           url: "/maintenance_request",
         },
         {
-          title: "Service History",
+          title: "Maintenance History",
           url: "/maintenance_history",
         },
       ],
@@ -129,7 +121,7 @@ const data = {
       icon: Frame,
     },
     {
-      name: "Truck Overview",
+      name: "Truck Management",
       url: "/trucks",
       icon: Frame,
     },
@@ -139,7 +131,7 @@ const data = {
       icon: PieChart,
     },
     {
-      name: "Service Requests",
+      name: "Maintenance Requests",
       url: "/maintenance_request",
       icon: Map,
     },

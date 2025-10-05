@@ -109,6 +109,7 @@ const CreateTruck = () => { // Remove onSuccess prop
   const [showOtherTruckType, setShowOtherTruckType] = useState(false)
   const [showOtherTireSize, setShowOtherTireSize] = useState(false)
   const [showOtherManufacturer, setShowOtherManufacturer] = useState(false)
+  const [showOtherPSI, setShowOtherPSI] = useState(false)
   const fileInputRef = useRef(null)
 
   // --- Form Initialization --- //
@@ -127,6 +128,7 @@ const CreateTruck = () => { // Remove onSuccess prop
     setShowOtherTruckType(false)
     setShowOtherTireSize(false)
     setShowOtherManufacturer(false)
+    setShowOtherPSI(false)
     if (fileInputRef.current) {
       fileInputRef.current.value = '' // Clear the file input element
     }
@@ -213,7 +215,7 @@ const CreateTruck = () => { // Remove onSuccess prop
       <DialogTrigger asChild>
         <Button>
           <Icon icon="mdi:truck-plus" className="mr-2" />
-          Add New Truck
+          Register Truck
         </Button>
       </DialogTrigger>
 
@@ -535,21 +537,92 @@ const CreateTruck = () => { // Remove onSuccess prop
                     render={({ field }) => (
                       <FormItem>
                         <FormLabel>Recommended PSI</FormLabel>
-                        <FormControl>
-                          <Input placeholder="e.g., 105-115" {...field} />
-                        </FormControl>
+                        <Select
+                          onValueChange={(value) => {
+                            if (value === "Others") {
+                              setShowOtherPSI(true)
+                              field.onChange("")
+                            } else {
+                              setShowOtherPSI(false)
+                              field.onChange(value)
+                            }
+                          }}
+                          value={showOtherPSI ? "Others" : field.value}
+                        >
+                          <FormControl>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Select PSI" />
+                            </SelectTrigger>
+                          </FormControl>
+                          <SelectContent>
+                            <SelectItem value="100">100</SelectItem>
+                            <SelectItem value="110">110</SelectItem>
+                            <SelectItem value="90">90</SelectItem>
+                            <SelectItem value="Others">Others</SelectItem>
+                          </SelectContent>
+                        </Select>
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+                  {showOtherPSI && (
+                    <FormField
+                      control={form.control}
+                      name="tire_psi"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Specify PSI Value</FormLabel>
+                          <FormControl>
+                            <Input placeholder="Enter PSI value" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  )}
                   <FormField
                     control={form.control}
                     name="tire_lifespan"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Expected Tire Lifespan</FormLabel>
+                        <FormLabel>Expected Tire Lifespan (Number of Tires)</FormLabel>
                         <FormControl>
-                          <Input placeholder="e.g., 50,000 miles" {...field} />
+                          <div className="flex items-center gap-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => {
+                                const currentValue = parseInt(field.value) || 0;
+                                if (currentValue > 0) {
+                                  field.onChange(String(currentValue - 1));
+                                }
+                              }}
+                              className="h-10 w-10"
+                            >
+                              <Icon icon="mdi:minus" className="h-4 w-4" />
+                            </Button>
+                            <Input
+                              type="number"
+                              placeholder="0"
+                              {...field}
+                              onChange={(e) => field.onChange(e.target.value)}
+                              className="text-center"
+                              min="0"
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="icon"
+                              onClick={() => {
+                                const currentValue = parseInt(field.value) || 0;
+                                field.onChange(String(currentValue + 1));
+                              }}
+                              className="h-10 w-10"
+                            >
+                              <Icon icon="mdi:plus" className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -638,7 +711,7 @@ const CreateTruck = () => { // Remove onSuccess prop
                     Creating...
                   </div>
                 ) : (
-                  'Create Truck'
+                  'Register Truck'
                 )}
               </Button>
             </DialogFooter>

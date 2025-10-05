@@ -15,7 +15,7 @@ const Header = ({ onRefresh, showArchived, onToggleArchived }) => {
         <div className="flex items-center gap-2">
           <Icon icon='mdi:account-group' className="text-3xl"/>
           <h1 className="text-2xl font-semibold">
-            {showArchived ? "Archived Drivers" : "Manage Drivers"}
+            {showArchived ? "Archived Drivers" : "Driver Management"}
           </h1>
         </div>
 

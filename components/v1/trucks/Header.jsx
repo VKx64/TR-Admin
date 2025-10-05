@@ -29,7 +29,7 @@ const Header = ({ onRefresh, showArchived, onToggleArchived }) => {
         <div className="flex items-center gap-2">
           <Icon icon='mingcute:bus-line' className="text-3xl text-primary"/>
           <h1 className="text-2xl font-semibold">
-            {showArchived ? "Archived Trucks" : "Truck Management"}
+            {showArchived ? "Archived Trucks" : "Truck Registration"}
           </h1>
         </div>
 
